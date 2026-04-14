@@ -13,6 +13,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
+import java.nio.charset.StandardCharsets;
+
 
 @Component
 class PasswordCredentialValidator implements CredentialValidator<PasswordCredential, PasswordCredential> {
@@ -42,9 +44,17 @@ class PasswordCredentialValidator implements CredentialValidator<PasswordCredent
         LOGGER.info("[GWY LOG] entered into PasswordCredentialValidator");
 
         for (final PasswordCredential offeredCredential : offeredCredentials) {
+            LOGGER.info("[GWY LOG] offeredCredential is not null");
             try {
                 String offeredPassword = offeredCredential.getPassword();
                 String knownPassword = knownCredential.getPassword();
+                byte[] offeredBytes = offeredPassword.getBytes(StandardCharsets.UTF_8);
+                String offeredHex = org.apache.commons.codec.binary.Hex.encodeHexString(offeredBytes);
+
+                LOGGER.info("[GWY DEBUG] Offered Password Plain: [{}]", offeredPassword);
+                LOGGER.info("[GWY DEBUG] Offered Password Hex: {}", offeredHex);
+                LOGGER.info("[GWY DEBUG] Known Hash from DB: [{}]", knownPassword);
+                
                 if (PasswordHelper.authenticateMd5Passwords(knownPassword, offeredPassword)) {
                     loggerContext.logString(
                             update.getUpdate(),
@@ -55,10 +65,13 @@ class PasswordCredentialValidator implements CredentialValidator<PasswordCredent
                     return true;
                 }
             } catch (IllegalArgumentException e) {
+                LOGGER.info("[GWY LOG] error occur");
+
                 updateContext.addGlobalMessage(new Message(Messages.Type.WARNING, e.getMessage()));
             }
         }
-
+        
+        LOGGER.info("[GWY LOG] return false");
         return false;
     }
 }

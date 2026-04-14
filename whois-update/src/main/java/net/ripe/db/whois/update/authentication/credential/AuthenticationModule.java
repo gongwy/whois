@@ -59,6 +59,8 @@ public class AuthenticationModule {
                                          final Class<? extends AuthenticationStrategy> authenticationStrategyClass) {
         LOGGER.info("[GWY LOG] entered into authenticationModule.authenticate");
         final Credentials offered = update.getCredentials();
+        // LOGGER.info("[GWY LOG] offered.size is:  " + offered.credentials.size());
+
         boolean passwordRemovedRemark = false;
 
         loggerContext.logAuthenticationStrategy(update.getUpdate(), authenticationStrategyClass.getName(), maintainers);
@@ -97,15 +99,18 @@ public class AuthenticationModule {
 
             if (credential == null) {
                 LOGGER.info("[GWY LOG] Skipping unknown credential:{}", auth);
-
                 LOGGER.warn("Skipping unknown credential: {}", auth);
                 continue;
             }
 
             LOGGER.info("[GWY LOG] credential is " + credential.toString() + " auth is " + auth);
-
+            
             final Class<? extends Credential> credentialClass = credential.getClass();
+
             for (CredentialValidator credentialValidator : credentialValidatorMap.get(credentialClass)) {
+
+                LOGGER.info("[GWY LOG] credential type is " + credentialClass.toString() + " Credentials size is " + offered.ofType(credentialValidator.getSupportedOfferedCredentialType()).size());
+
                 if (credentialValidator.hasValidCredential(update, updateContext, offered.ofType(credentialValidator.getSupportedOfferedCredentialType()), credential)) {
                     LOGGER.info("[GWY LOG] credential is " + credential.toString() + "valid true");
                     return true;

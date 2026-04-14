@@ -143,6 +143,7 @@ public final class IndexStrategies {
                 new IndexWithReference(AttributeType.SPONSORING_ORG, "sponsoring_org", "org_id"),
                 new IndexWithValueAndType(AttributeType.STATUS, "status", "status"),
                 new IndexWithReference(AttributeType.TECH_C, "tech_c", "pe_ro_id"),
+                new IndexWithReference(AttributeType.TECH_D, "tech_d", "pe_ro_id"),
                 new Unindexed(AttributeType.TEXT),
                 new IndexWithValue(AttributeType.UPD_TO, "upd_to", "upd_to"),
                 new IndexWithReference(AttributeType.ZONE_C, "zone_c", "pe_ro_id")

@@ -9,7 +9,8 @@ import java.util.Set;
 
 @Immutable
 public class Credentials {
-    private final Set<Credential> credentials;
+    // GWY 改回private
+    public final Set<Credential> credentials;
 
     public Credentials() {
         this.credentials = Collections.emptySet();

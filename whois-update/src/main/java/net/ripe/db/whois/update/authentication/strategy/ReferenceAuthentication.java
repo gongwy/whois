@@ -123,4 +123,3 @@ public class ReferenceAuthentication extends AuthenticationStrategyBase {
         return referenceObjects;
     }
 }
-

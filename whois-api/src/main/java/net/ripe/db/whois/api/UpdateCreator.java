@@ -10,8 +10,12 @@ import net.ripe.db.whois.update.domain.UpdateContext;
 import net.ripe.db.whois.update.domain.UpdateMessages;
 
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class UpdateCreator {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(UpdateCreator.class);
 
     public static Update createUpdate(final Paragraph paragraph,
                                       final Operation operation,
@@ -22,6 +26,8 @@ public class UpdateCreator {
         final String punycodeResult = PunycodeConversion.convert(rpslObject);
 
         final Latin1ConversionResult latin1ConversionResult = Latin1Conversion.convert(punycodeResult);
+        
+        LOGGER.info("[GWY LOG] entered into UpdateCreator, paragraph.getCredentials().all().size() is " + paragraph.getCredentials().all().size());
 
         final Update update = new Update(paragraph, operation, deleteReasons, latin1ConversionResult.getRpslObject());
 

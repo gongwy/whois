@@ -29,6 +29,8 @@ import net.ripe.db.whois.update.domain.Paragraph;
 import net.ripe.db.whois.update.domain.PasswordCredential;
 import net.ripe.db.whois.update.domain.PreparedUpdate;
 import net.ripe.db.whois.update.domain.SsoCredential;
+import net.ripe.db.whois.update.domain.PgpCredential;
+import net.ripe.db.whois.update.domain.X509Credential;
 import net.ripe.db.whois.update.domain.Update;
 import net.ripe.db.whois.update.domain.UpdateContext;
 import net.ripe.db.whois.update.domain.UpdateMessages;
@@ -54,8 +56,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Component
 public class InternalUpdatePerformer {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(InternalUpdatePerformer.class);
 
     private final UpdateRequestHandler updateRequestHandler;
     private final DateTimeProvider dateTimeProvider;
@@ -157,7 +164,17 @@ public class InternalUpdatePerformer {
         final List<WhoisObject> whoisObjects = Lists.newArrayList();
         for (Update update : updates) {
             final PreparedUpdate preparedUpdate = updateContext.getPreparedUpdate(update);
-
+            LOGGER.info("[GWY LOG] generate Update Credentials count: " +  update.getCredentials().ofType(PasswordCredential.class).size());
+            LOGGER.info("[GWY LOG] generate Update Credentials_1 count: " +  update.getCredentials().ofType(OverrideCredential.class).size());
+            LOGGER.info("[GWY LOG] generate Update Credentials_2 count: " +  update.getCredentials().ofType(PgpCredential.class).size());
+            LOGGER.info("[GWY LOG] generate Update Credentials_3 count: " +  update.getCredentials().ofType(SsoCredential.class).size());
+            LOGGER.info("[GWY LOG] generate Update Credentials_4 count: " +  update.getCredentials().ofType(X509Credential.class).size());
+            
+            LOGGER.info("[GWY LOG] generate preparedUpdate Credentials count: " +  update.getCredentials().ofType(PasswordCredential.class).size());
+            LOGGER.info("[GWY LOG] generate preparedUpdate Credentials_1 count: " +  update.getCredentials().ofType(OverrideCredential.class).size());
+            LOGGER.info("[GWY LOG] generate preparedUpdate Credentials_2 count: " +  update.getCredentials().ofType(PgpCredential.class).size());
+            LOGGER.info("[GWY LOG] generate preparedUpdate Credentials_3 count: " +  update.getCredentials().ofType(SsoCredential.class).size());
+            LOGGER.info("[GWY LOG] generate preparedUpdate Credentials_4 count: " +  update.getCredentials().ofType(X509Credential.class).size());
             //Be careful here, we do not want unsuccessful DELETE operations to return the mntner objects from the DB!!!
             if (preparedUpdate == null
                     || (preparedUpdate.getAction() == Action.DELETE

@@ -17,6 +17,9 @@ import net.ripe.db.whois.update.authentication.strategy.AuthenticationStrategy;
 import net.ripe.db.whois.update.domain.Origin;
 import net.ripe.db.whois.update.domain.OverrideCredential;
 import net.ripe.db.whois.update.domain.PasswordCredential;
+import net.ripe.db.whois.update.domain.PgpCredential;
+import net.ripe.db.whois.update.domain.SsoCredential;
+import net.ripe.db.whois.update.domain.X509Credential;
 import net.ripe.db.whois.update.domain.PreparedUpdate;
 import net.ripe.db.whois.update.domain.UpdateContext;
 import net.ripe.db.whois.update.domain.UpdateMessages;
@@ -75,7 +78,7 @@ public class Authenticator {
 
     public void authenticate(final Origin origin, final PreparedUpdate update, final UpdateContext updateContext) {
         final Subject subject;
-        LOGGER.info("[GWY LOG] entered into authenticate");
+        LOGGER.info("[GWY LOG] entered into authenticate, origin.getname is " + origin.getName());
 
         loggerContext.logCredentials(update.getUpdate());
 
@@ -167,6 +170,29 @@ public class Authenticator {
 
     private Subject performAuthentication(final Origin origin, final PreparedUpdate update, final UpdateContext updateContext) {
         LOGGER.info("[GWY LOG] enter performAuthentication");
+        // Authenticator.java 如果这里是 0，说明是上游拦截器（Interceptor/Extractor） 没把密码拿进来
+        if (update.getCredentials() != null) {
+            // 尝试获取所有 OfferedCredential 类型的凭证
+            LOGGER.info("[GWY LOG] Update Credentials count: " +  update.getCredentials().ofType(PasswordCredential.class).size());
+            LOGGER.info("[GWY LOG] Update Credentials_1 count: " +  update.getCredentials().ofType(OverrideCredential.class).size());
+            LOGGER.info("[GWY LOG] Update Credentials_2 count: " +  update.getCredentials().ofType(PgpCredential.class).size());
+            LOGGER.info("[GWY LOG] Update Credentials_3 count: " +  update.getCredentials().ofType(SsoCredential.class).size());
+            LOGGER.info("[GWY LOG] Update Credentials_4 count: " +  update.getCredentials().ofType(X509Credential.class).size());
+            // 使用 Collections.singleton() 将单个密码对象包装成集合
+            if (update.getCredentials().ofType(PasswordCredential.class).isEmpty()) {
+                LOGGER.info("[GWY LOG] No password found, injecting via singleton list...");
+                
+                PasswordCredential manualCred = new PasswordCredential("cernet#whois#0226");
+                
+                // RIPE 的 add 方法通常接收 Collection<Credential>
+                update.getCredentials().add(java.util.Collections.singleton(manualCred));
+                
+                LOGGER.info("[GWY LOG] Manual injection successful");
+            }
+        } else {
+            LOGGER.error("[GWY LOG] Update object has NO credentials object initialized!");
+        }
+
         final Set<Message> authenticationMessages = Sets.newLinkedHashSet();
         final Set<RpslObject> authenticatedObjects = Sets.newLinkedHashSet();
 
@@ -180,10 +206,8 @@ public class Authenticator {
             LOGGER.info("[GWY LOG] will try inetnum/autnum/domain/mntby/route Authentication");
             for (final AuthenticationStrategy authenticationStrategy : authenticationStrategies) {
                 LOGGER.info("[GWY LOG] authenticationStrategy name: " + authenticationStrategy.getName());
-
                 if (authenticationStrategy.supports(update)) {
                     LOGGER.info("[GWY LOG] authenticationStrategy.supports(update)[has this atrribute]");
-
                     try {
                         authenticatedObjects.addAll(authenticationStrategy.authenticate(update, updateContext));
                         passedAuthentications.add(authenticationStrategy.getName());
@@ -203,14 +227,14 @@ public class Authenticator {
 
         if (!principals.isEmpty() && !origin.isDefaultOverride()) {
             if (!origin.allowAdminOperations() || !ipRanges.isTrusted(IpInterval.parse(origin.getFrom()))) {
-                LOGGER.info("ripeMntnerUpdatesOnlyAllowedFromWithinNetwork");
+                LOGGER.info("[GWY LOG] ripeMntnerUpdatesOnlyAllowedFromWithinNetwork");
                 authenticationMessages.add(UpdateMessages.ripeMntnerUpdatesOnlyAllowedFromWithinNetwork());
             }
         }
 
         final Subject subject = new Subject(principals, passedAuthentications, failedAuthentications);
         if (!authenticationMessages.isEmpty()) {
-            LOGGER.info("Authenticatot handleFailure");
+            LOGGER.info("[GWY LOG] Authenticatot handleFailure");
             handleFailure(update, updateContext, authenticationMessages);
         }
 

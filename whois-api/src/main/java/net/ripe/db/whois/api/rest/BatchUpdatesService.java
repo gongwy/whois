@@ -31,6 +31,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static jakarta.ws.rs.core.Response.Status.BAD_REQUEST;
 import static net.ripe.db.whois.api.rest.RestServiceHelper.isQueryParamSet;
@@ -43,6 +45,8 @@ public class BatchUpdatesService {
     private final LoggerContext loggerContext;
     private final InternalUpdatePerformer updatePerformer;
     private final WhoisObjectMapper whoisObjectMapper;
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(BatchUpdatesService.class);
 
     @Autowired
     public BatchUpdatesService(final InternalUpdatePerformer updatePerformer,
@@ -62,6 +66,7 @@ public class BatchUpdatesService {
                        @PathParam("source") final String sourceParam,
                        @QueryParam("override") final String override,
                        @QueryParam("dry-run") final String dryRun,
+                       @QueryParam("password") final List<String> passwords,
                        @QueryParam("delete-reason") final String reason,
                        @CookieParam(AuthServiceClient.TOKEN_KEY)  final String crowdTokenKey) {
 
@@ -71,7 +76,11 @@ public class BatchUpdatesService {
 
         try {
             final Origin origin = updatePerformer.createOrigin(request);
+            LOGGER.info("[GWY LOG] entered into BatchUpdatesService, origin.getname is " + origin.getName());
+
             final UpdateContext updateContext = updatePerformer.initContext(origin, crowdTokenKey, request);
+            LOGGER.info("[GWY LOG] updateContext is " + origin.getName());
+            
             updateContext.setBatchUpdate();
 
             if(isQueryParamSet(dryRun)) {
@@ -86,7 +95,8 @@ public class BatchUpdatesService {
             for (final ActionRequest actionRequest : actionRequests) {
                 final String deleteReason = Action.DELETE.equals(actionRequest.getAction()) ?
                         StringUtils.isBlank(reason)? DELETE_REASON : reason : null;
-                updates.add(updatePerformer.createUpdate(updateContext, actionRequest.getRpslObject(), Collections.emptyList() /* passwords */, deleteReason, override));
+                LOGGER.info("[GWY LOG] entered into BatchUpdatesService, rpsl object is " + actionRequest.getRpslObject().toString());
+                updates.add(updatePerformer.createUpdate(updateContext, actionRequest.getRpslObject(), passwords, deleteReason, override));
             }
 
             final WhoisResources updatedWhoisResources = updatePerformer.performUpdates(updateContext, origin, updates, Keyword.NONE, request);

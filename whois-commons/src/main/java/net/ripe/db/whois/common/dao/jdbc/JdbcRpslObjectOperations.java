@@ -81,12 +81,15 @@ public class JdbcRpslObjectOperations {
 
         final IndexStrategy indexStrategy = IndexStrategies.get(attributeType);
 
+        LOGGER.info("[GWY LOG] attributeType.getName() is: " + attributeType.getName());
+
         final Set<CIString> uniqueValues = Sets.newHashSet();
         final List<RpslAttribute> attributes = rpslObject.findAttributes(attributeType);
         for (final RpslAttribute attribute : attributes) {
             for (final CIString value : attribute.getReferenceValues()) {
                 if (uniqueValues.add(value)) {
                     try {
+                        LOGGER.info("[GWY LOG] value.toString() is: " + value.toString());
                         final int rows = indexStrategy.addToIndex(jdbcTemplate, rpslObjectInfo, rpslObject, value.toString());
                         if (rows < 1) {
                             throw new DataIntegrityViolationException("Rows affected: " + rows);
