@@ -10,81 +10,81 @@ address:        清华大学
 		        A572
 phone:          +86 15776831165
 e-mail:         gongwanying@cernet.edu.cn
-nic-hdl:        GWY-CERNET
+nic-hdl:        GWY-CERNIC
 remarks:        运维人员
-mnt-by:         CERNET-DBM-MNT
+mnt-by:         CERNIC-DBM-MNT
 abuse-mailbox:  gongwanying@cernet.edu.cn
-source:         CERNET
+source:         CERNIC
 
-mntner:         CERNET-DBM-MNT
-descr:          Mntner for CERNET-DBM-MNT
-admin-c:        GWY-CERNET
-tech-c:         GWY-CERNET
+mntner:         CERNIC-DBM-MNT
+descr:          Mntner for CERNIC-DBM-MNT
+admin-c:        GWY-CERNIC
+tech-c:         GWY-CERNIC
 upd-to:         gongwanying@cernet.edu.cn
 mnt-nfy:        gongwanying@cernet.edu.cn
 auth:           MD5-PW $1$N2zhyJ3g$JG/MaPad6pxnzrYnih/W./
 notify:         gongwanying@cernet.edu.cn
-mnt-by:         CERNET-DBM-MNT
+mnt-by:         CERNIC-DBM-MNT
 remarks:        This is an automatically created object.
-source:         CERNET
+source:         CERNIC
 
 inetnum:        0.0.0.0 - 255.255.255.255
 netname:        IANA-BLK
 descr:          The whole IPv4 address space
-admin-c:        GWY-CERNET
-tech-c:         GWY-CERNET
+admin-c:        GWY-CERNIC
+tech-c:         GWY-CERNIC
 status:         ALLOCATED UNSPECIFIED
 remarks:        The country is really worldwide.
-mnt-by:         CERNET-DBM-MNT
+mnt-by:         CERNIC-DBM-MNT
 remarks:        This is an automatically created object.
-source:         CERNET
+source:         CERNIC
 
 inet6num:       0::/0
 netname:        ROOT
 descr:          Root inet6num object
-admin-c:        GWY-CERNET
-tech-c:         GWY-CERNET
-mnt-by:         CERNET-DBM-MNT
+admin-c:        GWY-CERNIC
+tech-c:         GWY-CERNIC
+mnt-by:         CERNIC-DBM-MNT
 status:         ALLOCATED-BY-RIR
 remarks:        This network in not allocated.
 remarks:        This is an automatically created object.
-source:         CERNET
+source:         CERNIC
 
 as-block:       AS1 - AS4294967295
 descr:          whole as block
-admin-c:        GWY-CERNET
-tech-c:         GWY-CERNET
-mnt-by:         CERNET-DBM-MNT
+admin-c:        GWY-CERNIC
+tech-c:         GWY-CERNIC
+mnt-by:         CERNIC-DBM-MNT
 remarks:        This is an automatically created object.
-source:         CERNET
+source:         CERNIC
 
 domain:         in-addr.arpa
 descr:          The whole IPv4 address space
-admin-c:        GWY-CERNET
-tech-c:         GWY-CERNET
-zone-c:         GWY-CERNET
+admin-c:        GWY-CERNIC
+tech-c:         GWY-CERNIC
+zone-c:         GWY-CERNIC
 nserver:        ns.cernet.edu.cn # this is just a placeholder
-mnt-by:         CERNET-DBM-MNT
+mnt-by:         CERNIC-DBM-MNT
 remarks:        This is an automatically created object.
-source:         CERNET
+source:         CERNIC
 
 domain:         ip6.arpa
 descr:          The whole IPv6 address space
-admin-c:        GWY-CERNET
-tech-c:         GWY-CERNET
-zone-c:         GWY-CERNET
+admin-c:        GWY-CERNIC
+tech-c:         GWY-CERNIC
+zone-c:         GWY-CERNIC
 nserver:        ns.cernet.edu.cn # this is just a placeholder
-mnt-by:         CERNET-DBM-MNT
+mnt-by:         CERNIC-DBM-MNT
 remarks:        This is an automatically created object.
-source:         CERNET
+source:         CERNIC
 
 domain:         e164.arpa
 descr:          The whole IPv6 address space
-admin-c:        GWY-CERNET
-tech-c:         GWY-CERNET
-zone-c:         GWY-CERNET
+admin-c:        GWY-CERNIC
+tech-c:         GWY-CERNIC
+zone-c:         GWY-CERNIC
 nserver:        ns.cernet.edu.cn # this is just a placeholder
-mnt-by:         CERNET-DBM-MNT
+mnt-by:         CERNIC-DBM-MNT
 remarks:        This is an automatically created object.
-source:         CERNET
+source:         CERNIC
 
