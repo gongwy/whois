@@ -6,12 +6,13 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoField;
 import java.time.temporal.TemporalAccessor;
+import java.util.Locale;
 
 public final class FormatHelper {
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter DATE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter DATE_TIME_UTC_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'").withZone(ZoneOffset.UTC);
-    private static final DateTimeFormatter DAY_DATE_UTC_FORMAT = DateTimeFormatter.ofPattern("E MMM d HH:mm:ss yyyy'Z'").withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter DAY_DATE_UTC_FORMAT = DateTimeFormatter.ofPattern("E MMM d HH:mm:ss yyyy'Z'", Locale.ENGLISH).withZone(ZoneOffset.UTC);
 
     private static final String SPACES = StringUtils.repeat(" ", 100);
 

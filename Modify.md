@@ -1,555 +1,457 @@
-# RIPE Whois Database
+# RIPE Whois Database 修改说明
 
-Specific
--------
-1.修改代码使其适配特定的数据格式
+本文档记录本项目基于 [RIPE-NCC/whois](https://github.com/RIPE-NCC/whois) 的定制修改、关键配置和常用运行方式。
 
-2.删减businessRule认证
+## 修改概览
 
-3.增加md5密码生成脚本(python)
+1. 适配本地特定数据格式和对象规则。
+2. 删减部分 businessRule 认证逻辑。
+3. 增加 MD5 密码生成脚本示例。
+4. 修改 `domain` 类型的存储与索引逻辑。
+5. 额外搭建邮件服务器，用于接收 email-update 请求。
+6. 增加 `nserver` 类型，并实现相关索引和查询。
+7. 修改默认编码为 UTF-8。
+8. 修改 `organisationid` 生成规则：按省份代码命名并全局自增。
+9. 支持 HTTPS 启动。
+10. 新增 NIC-HDL 后缀按 source 可配置生成规则。
+11. 固定部分英文日期输出的 Locale，避免中文系统环境下 build/test 失败。
 
-4.修改domain类型的存储与索引
+## NIC-HDL 后缀配置
 
-5.额外搭建一个邮件服务器用于接收email-update请求
+默认 RIPE 逻辑中，自动生成 NIC-HDL 时后缀来自当前 `whois.source`。本项目新增配置项：
 
-6.增加nserver类型，并实现相关项索引
-
-7.修改默认编码为utf8
-
-8.修改organisationid的生成规则，按省份代码命名并全局自增
-
-9.启动HTTPS
-
-
-环境配置
------------------------------------------
-
-参考官方文档： [Building whois | Docs 环境配置](https://apps.db.ripe.net/docs/Installation-and-Development/Building-whois/)
-
-//安装java (一定要执行这个下载，不然会有报错，可能是javahome不对)
-
-sudo apt install openjdk-21-jdk
-
-//查看/切换java版本
-
-sudo update-alternatives --config java 
-
-//安装git
-
-sudo apt-get install git
-
-//配置ssh公钥，添加至github 
-
-//安装maven
-
-sudo apt-get install maven 
-
-//安装mariadb
-
-sudo apt-get install mariadb-client-5.5 mariadb-server-5.5 
-
-//安装后会要求重启，查看进程启动终端会打印mariadbd相关信息
-
-ps -ef | grep mysql
-
-//登录mysql，不需要使用密码，可能是安装时自动配置了auth 
-
-sudo mysql -u root
-
-//新建用户 dbase:dbasedbase
-
-useradd dbase passwd dbase
-
-//check pgrep是否已安装
-
-//安装sendmail
-
-sudo apt-get install sendmail
-
-//下载命令行运行工具，使用参考https://docs.cyclopsgroup.org/jmxterm
-https://github.com/jiaqi/jmxterm/releases/download/v1.0.4/jmxterm-1.0.4-uber.jar
-
-cd /home/dbase && sudo curl -O https://github.com/jiaqi/jmxterm/releases/download/v1.0.4/
-
-whois安装与运行
--------------------------------------
-
-git clone git@git hub.com:RIPE-NCC/whois.git cd whois
-
-参考[安装手册](https://apps.db.ripe.net/docs/Installation-and-Development/Installation-instructions/)
-
+```properties
+user.handle.suffix.config=CERNET:CER,AP:CER,CN:CER
 ```
-// 编译产出一版whois-db，产出路径在whois-db/target/xx(pom.xml中的version名).jar
-mvn clean install -Prelease
 
-// 将产出包移动至dbase的家目录下 
-sudo mkdir /home/dbase
-sudo mv whois-db/target/whois-db-1.0-SNAPSHOT.jar /home/dbase/whois.jar 
-sudo cp tools/hazel cast.xml /home/dbase/
+含义：
+
+- 当当前 `whois.source` 为 `CERNET`、`AP` 或 `CN` 时，自动生成的 NIC-HDL 后缀使用 `CER`。
+- 其他未配置的 source 仍使用原有默认规则，即使用当前 source 作为后缀。
+- 配置值中的后缀可以写成 `CER`，也兼容写成 `-CER`，代码会去掉开头的 `-`。
+- 配置项为空时不改变原有行为。
+
+示例：
+
+```properties
+whois.source=CERNET
+user.handle.suffix.config=CERNET:CER,AP:CER,CN:CER
+```
+
+此时提交：
+
+```text
+person:     TEST USER
+nic-hdl:    AUTO-1
+source:     CERNET
+```
+
+生成结果会使用类似：
+
+```text
+nic-hdl:    TU1-CER
+```
+
+显式提交的 NIC-HDL 也同步支持该配置。例如：
+
+```text
+nic-hdl:    XX1-CER
+source:     CERNET
+```
+
+在 `whois.source=CERNET` 且配置了 `CERNET:CER` 时会被认为合法。
+
+相关代码：
+
+- `whois-update/src/main/java/net/ripe/db/whois/update/autokey/AbstractAutoKeyFactory.java`
+- `whois-update/src/main/java/net/ripe/db/whois/update/autokey/NicHandleFactory.java`
+- `whois-update/src/main/java/net/ripe/db/whois/update/domain/NicHandle.java`
+
+覆盖范围：
+
+- `person`、`role` 等以 `nic-hdl` 作为主键的对象都会走同一套 NIC-HDL 解析和生成逻辑。
+- 未配置 source 的行为保持兼容，不影响默认 source 后缀生成。
+
+相关测试：
+
+```bash
+mvn -pl whois-update -am -Dtest=NicHandleFactoryTest,NicHandleTest -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
+## Locale 相关修复
+
+在中文系统 Locale 下，部分日期 formatter 会输出中文星期/月，导致测试期望的英文日期失败。本项目已固定为 `Locale.ENGLISH`：
+
+- `whois-commons/src/main/java/net/ripe/db/whois/common/FormatHelper.java`
+- `whois-api/src/main/java/net/ripe/db/whois/api/mail/dequeue/MessageParser.java`
+
+相关测试：
+
+```bash
+mvn -pl whois-commons -Dtest=FormatHelperTest test
+mvn -pl whois-api -Dtest=MessageParserTest test
+```
+
+## 构建环境
+
+参考官方文档：
+
+- [Building whois](https://apps.db.ripe.net/docs/Installation-and-Development/Building-whois/)
+- [Installation instructions](https://apps.db.ripe.net/docs/Installation-and-Development/Installation-instructions/)
+
+基础依赖：
+
+```bash
+sudo apt install openjdk-21-jdk
+sudo update-alternatives --config java
+sudo apt-get install git maven
+sudo apt-get install mariadb-client mariadb-server
+sudo apt-get install sendmail
+```
+
+构建：
+
+```bash
+mvn clean install -Prelease
+```
+
+本地已验证：
+
+```bash
+mvn clean install -Prelease
+mvn clean install -Prelease -rf :whois-api
+```
+
+最终结果：`BUILD SUCCESS`。
+
+## 安装与运行
+
+编译产物：
+
+```bash
+whois-db/target/whois-db-1.0-SNAPSHOT.jar
+```
+
+部署示例：
+
+```bash
+sudo mkdir -p /home/dbase
+sudo mv whois-db/target/whois-db-1.0-SNAPSHOT.jar /home/dbase/whois.jar
+sudo cp tools/hazelcast.xml /home/dbase/
 sudo cp whois-commons/src/test/resources/log4j2.xml /home/dbase/
-sudo cp whois-commons/src/test/resources/whois.properties /home/dbase/properties 
+sudo cp whois-commons/src/test/resources/whois.properties /home/dbase/properties
 sudo chown dbase:dbase -R /home/dbase/
 ```
 
-```
-//修改/etc/mysql/mysql.conf.d/mysqld.cnf //添加以下两行
+MySQL 建议配置：
+
+```text
 max_allowed_packet = 20M
 innodb_buffer_pool_size = 2G
-sudo service mysql restart   
-//创建whois需要的用户
-CREATE USER 'dbint '@ 'localhost ' IDENTIFIED BY ' ';   
-GRANT ALL PRIVILEGES ON *.* TO 'dbint '@ 'localhost ';
-CREATE USER 'rdonly '@ 'localhost ' IDENTIFIED BY ' ';
-GRANT SELECT PRIVILEGES ON *.* TO 'rdonly '@ 'localhost ';
-// 创建表
-sudo mysql -u root
-CREATE CREATE CREATE CREATE CREATE
-DATABASE DATABASE DATABASE DATABASE DATABASE
-WHOIS_LOCAL;
-MAILUPDATES_LOCAL; ACL_LOCAL;
-INTERNALS_LOCAL; NRTM_LOCAL;
-
-// 写入test数据  
-use WHOIS_LOCAL;
-source ./whois-commons/src/main/resources/whois_schema.sql 
-use MAILUPDATES_LOCAL;
-source ./whois-commons/src/main/resources/mailupdates_schema.sql 
-use ACL_LOCAL;
-source ./whois-commons/src/main/resources/acl_schema.sql 
-use INTERNALS_LOCAL;
-source ./whois-commons/src/main/resources/internals_schema.sql
-
-use NRTM_LOCAL;
-source ./whois-commons/src/main/resources/nrtm_schema.sql 
-use WHOIS_LOCAL;
-source ./whois-commons/src/main/resources/whois_data.sql 
-use INTERNALS_LOCAL;
-source ./whois-commons/src/main/resources/internals_data.sql 
-use NRTM_LOCAL;
-source ./whois-commons/src/main/resources/nrtm_data.sql
 ```
 
-切换dbase用户
+重启 MySQL：
+
+```bash
+sudo service mysql restart
 ```
-//启动whois，注意看报错 nrtm目前有报错
-/usr/bin/java -Dwhois -Djsse.enableSNIExtension=false -Dcom.sun.management.jmxremote -Dhazelcast.jmx=true -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.port=1099 -Xms1024m -Xmx8g -Dwhois.config=properties -Duser.timezone=UTC -Dhazelcast.config=hazelcast.xml -Dlog4j.configurationFile=file:log4j2.xml -jar whois.jar
-//验证一下
+
+创建数据库并导入 schema/data：
+
+```sql
+CREATE DATABASE WHOIS_LOCAL;
+CREATE DATABASE MAILUPDATES_LOCAL;
+CREATE DATABASE ACL_LOCAL;
+CREATE DATABASE INTERNALS_LOCAL;
+CREATE DATABASE NRTM_LOCAL;
+
+USE WHOIS_LOCAL;
+SOURCE ./whois-commons/src/main/resources/whois_schema.sql;
+SOURCE ./whois-commons/src/main/resources/whois_data.sql;
+
+USE MAILUPDATES_LOCAL;
+SOURCE ./whois-commons/src/main/resources/mailupdates_schema.sql;
+
+USE ACL_LOCAL;
+SOURCE ./whois-commons/src/main/resources/acl_schema.sql;
+
+USE INTERNALS_LOCAL;
+SOURCE ./whois-commons/src/main/resources/internals_schema.sql;
+SOURCE ./whois-commons/src/main/resources/internals_data.sql;
+
+USE NRTM_LOCAL;
+SOURCE ./whois-commons/src/main/resources/nrtm_schema.sql;
+SOURCE ./whois-commons/src/main/resources/nrtm_data.sql;
+```
+
+启动：
+
+```bash
+/usr/bin/java \
+  -Dwhois \
+  -Djsse.enableSNIExtension=false \
+  -Dcom.sun.management.jmxremote \
+  -Dhazelcast.jmx=true \
+  -Dcom.sun.management.jmxremote.authenticate=false \
+  -Dcom.sun.management.jmxremote.port=1099 \
+  -Xms1024m \
+  -Xmx8g \
+  -Dwhois.config=properties \
+  -Duser.timezone=UTC \
+  -Dhazelcast.config=hazelcast.xml \
+  -Dlog4j.configurationFile=file:log4j2.xml \
+  -jar whois.jar
+```
+
+验证：
+
+```bash
 telnet localhost 1043
 ```
 
+## 数据加载
+
+准备测试数据：
+
+```bash
+sudo cp whois-scheduler/src/test/resources/TEST.db /home/dbase/
 ```
-//测试db数据
-sudo cp /home/gwy/Whois/whois/whois-scheduler/src/test/resources/TEST.db /home/dbase/
 
-//用vscode直接拖拽上传jar，因为ubuntuserver下载总是失败
+使用 jmxterm：
 
-su dbase
-//获取pid
-pgrep java
-
+```bash
 java --add-exports jdk.jconsole/sun.tools.jconsole=ALL-UNNAMED -jar jmxterm-1.0.4-uber.jar
-open (PID HERE)
+open <PID>
 bean net.ripe.db.whois:name=Bootstrap
 run loadDump comment TEST.db
-//看到220 succeed 数据加载成功
 ```
 
-### Templates
-[Domain Template](http://1.51.2.207:1080/whois/metadata/templates/domain)
+看到 `220 succeed` 表示加载成功。
 
-### Request with SyncUpdates
+## SyncUpdates 示例
 
-See [Request with SyncUpdates](https://docs.db.ripe.net/Update-Methods/Syncupdates/)
-```
-[file templete]
+请求体示例：
+
+```text
 ----------------------------466af99a9520
 Content-Disposition: form-data; name="DATA"
 
 person:         TEST GWY
-nic-hdl:        GWY-TEST
+nic-hdl:        AUTO-1
 address:        Singel 258, 1016 AB Amsterdam
 phone:          +31205354444
-e-mail:         gonghewan@gmail.com
-remarks:        ********************************
-remarks:        This Object is only an example!
-remarks:        ********************************
+e-mail:         user@example.net
+remarks:        This Object is only an example.
 source:         TEST
 mnt-by:         TEST-DBM-MNT
 password:       yourpassword
 ----------------------------466af99a9520--
 ```
-```
-增(POST && NEW=yes)
-curl -v -4 -X POST -H "Content-Type: multipart/form-data; boundary=--------------------------466af99a9520" --data-binary @create_person.txt  http://localhost:1080/whois/syncupdates/test?NEW=yes
 
-删（POST && DELETE=yes）
-curl -v -4 -X POST -H "Content-Type: multipart/form-data; boundary=--------------------------466af99a9520" --data-binary @create_mnt.txt  http://localhost:1080/whois/syncupdates/test?Delete=yes
+新增：
 
-改（POST）
-curl -v -4 -X POST -H "Content-Type: multipart/form-data; boundary=--------------------------466af99a9520" --data-binary @create_person.txt  http://localhost:1080/whois/syncupdates/test
-```
-
-### Request with Rest
-- See [Installation instructions](https://apps.db.ripe.net/docs/Installation-and-Development/Installation-instructions).
-  
-```
-[file templete]
-{
-"objects": {
-    "object": [
-    {
-        "source": {
-        "id": "TEST"
-        },
-        "attributes": {
-        "attribute": [
-            {
-            "name": "person",
-            "value": "TEST GWY"
-            },
-            {
-            "name": "address",
-            "value": "Singel 258"
-            },
-            {
-            "name": "phone",
-            "value": "+31-1234567890"
-            },
-            {
-            "name": "mnt-by",
-            "value": "TEST-DBM-MNT"
-            },
-            {
-            "name": "nic-hdl",
-            "value": "GWY1-TEST"
-            },
-            {
-            "name": "remarks",
-            "value": "remark"
-            },
-            {
-                "name": "e-mail",
-                "value": "gonghewan@gmail.com"
-            },
-            {
-            "name": "source",
-            "value": "TEST"
-            }
-        ]
-        }
-    }
-    ]
-}
-}
-```
-```
-查：
-curl -X GET -H 'Content-Type: application/json' 'http://localhost:1080/whois/test/Person/GWY-TEST'
-
-增:
-curl -X POST -H 'Content-Type: application/json' --data @create_person_json.txt 'http://localhost:1080/whois/test/person?password=xxx'
-
-改：
-curl -X PUT -H 'Content-Type: application/json' --data @create_person_json.txt 'http://localhost:1080/whois/test/person?password=xxx'
-
-删：
-curl -v -4 -X DELETE -H 'Content-Type: application/json' -H 'Accept:application/json' --data @create_person_json.txt  http://localhost:1080/whois/test/person/GWY-TEST?password=xxx
-
+```bash
+curl -v -4 -X POST \
+  -H "Content-Type: multipart/form-data; boundary=--------------------------466af99a9520" \
+  --data-binary @create_person.txt \
+  "http://localhost:1080/whois/syncupdates/test?NEW=yes"
 ```
 
-### Request with Search
-```
-http://ip:port/whois/search?query-string=0.0.0.0
-http://1.51.2.207:1080/whois/search?query-string=ns.ripe.net&inverse-attribute=nserver //inverse search
-```
+修改：
 
-### Request with mail
-[ubuntu配置mail server](https://blog.csdn.net/m0_56363537/article/details/127962135)
-实际上只有一种，就是列在文件/etc/mail/relay-domains,默认安装后无此文件，你可以创建它：
-abc.com (/etc/mail/relay-domains)
-abc.com relay (/etc/mail/access)
-
-sudo service sendmail restart //启动不起来看/var/log/mail.err
-
-```
-依次执行：
-telnet hostname 25
-mail from:"hello"<mail1@test-cernet.com>
-rcpt to:dbase@test-cernet.com
-data
-hello world!
-.
-邮件投送成功输出提示：
-250 2.0.0 48C1xH2S003505 Message accepted for delivery
-
-可以在/var/mail/mail1看到mail
+```bash
+curl -v -4 -X POST \
+  -H "Content-Type: multipart/form-data; boundary=--------------------------466af99a9520" \
+  --data-binary @create_person.txt \
+  "http://localhost:1080/whois/syncupdates/test"
 ```
 
+删除：
+
+```bash
+curl -v -4 -X POST \
+  -H "Content-Type: multipart/form-data; boundary=--------------------------466af99a9520" \
+  --data-binary @delete_object.txt \
+  "http://localhost:1080/whois/syncupdates/test?DELETE=yes"
 ```
-(安装maildrop)[https://www.yunweiku.com/thread-206994-1-1.html]
 
-https://ftp.debian.org/debian/pool/main/libu/libunistring/
-下载并安装libunistring2_1.0-2_amd64.deb 和 libunistring-dev
-sudo dpkg -i ./libunistring2_1.0-2_amd64.deb
-apt-cache policy libunistring2
+## REST 示例
 
-wget http://mirrors.kernel.org/ubuntu/pool/main/libi/libidn2/libidn2-0_2.2.0-2_amd64.deb
-wget http://mirrors.kernel.org/ubuntu/pool/main/libi/libidn2/libidn2-0-dev_2.2.0-2_amd64.deb 
-wget http://archive.ubuntu.com/ubuntu/pool/main/libi/libidn2/libidn2-dev_2.2.0-2_amd64.deb
-sudo dpkg -i libidn2-dev_2.2.0-2_amd64.deb
-sudo apt-mark hold libidn2-dev
-sudo dpkg -i libidn2-0-dev_2.2.0-2_amd64.deb 
-sudo apt-mark hold libidn2-0-dev
-sudo dpkg -i libidn2-0_2.2.0-2_amd64.deb
-sudo apt-mark hold libidn2-0
+新增对象：
 
-wget https://sourceforge.net/projects/courier/files/courier-unicode/2.1/courier-unicode-2.1.tar.bz2/download
-mv download courier-unicode-2.1.tar.bz2
-tar xivf courier-unicode-2.1.tar.bz2
-cd courier-unicode-2.1
-./configure
-make
-make install
-
-sudo apt-get install libcourier-unicode4
-
-//下载地址：https://sourceforge.net/projects/courier/files/maildrop/
-wget https://sourceforge.net/projects/courier/files/maildrop/3.1.8/maildrop-3.1.8.tar.bz2/download
-tar xvfj maildrop-3.1.8.tar.bz2
-sudo apt-get install g++ libpcre3-dev
-groupadd maildrop
-sudo groupadd maildrop
-sudo useradd -g maildrop maildrop
-cd maildrop-3.1.8/
-sudo apt install libpcre2-dev
-id maildrop
-./configure --enable-maildrop-uid=1004 --enable-maildrop-gid=1004 --enable-trusted-users='root qmaild maildrop dbase gwy'
-make
-sudo make install
-maildrop -v
-chmod 4755 /usr/local/bin/maildrop
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  --data @create_person_json.txt \
+  "http://localhost:1080/whois/test/person?password=xxx"
 ```
-#### 邮件服务器搭建
+
+查询对象：
+
+```bash
+curl -X GET \
+  -H "Content-Type: application/json" \
+  "http://localhost:1080/whois/test/person/GWY1-TEST"
 ```
-//Postfix是一个邮件传输代理软件，用于电子邮件的收发过程
-//Dovecot是一个IMAP和POP3邮件服务器
 
-sudo apt-update
-sudo apt-get install -y postfix dovecot-imapd dovecot-pop3d
-//暂时选择Satellite system模式
-//编辑配置文件
-sudo vim /etc/dovecot/dovecot.conf
-//增加一行
-protocols = imap pop3 lmtp
+修改对象：
 
-sudo apt install dovecot-lmtpd
+```bash
+curl -X PUT \
+  -H "Content-Type: application/json" \
+  --data @create_person_json.txt \
+  "http://localhost:1080/whois/test/person?password=xxx"
+```
+
+删除对象：
+
+```bash
+curl -v -4 -X DELETE \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  --data @delete_person_json.txt \
+  "http://localhost:1080/whois/test/person/GWY1-TEST?password=xxx"
+```
+
+搜索：
+
+```text
+http://localhost:1080/whois/search?query-string=0.0.0.0
+http://localhost:1080/whois/search?query-string=ns.example.net&inverse-attribute=nserver
+```
+
+## 邮件更新
+
+邮件更新链路涉及：
+
+- `whois-api/src/main/java/net/ripe/db/whois/api/mail/dequeue/MessageDequeue.java`
+- `whois-api/src/main/java/net/ripe/db/whois/api/mail/dao/MailMessageDao.java`
+- `whois-api/src/main/java/net/ripe/db/whois/api/mail/dao/MailMessageDaoJdbc.java`
+- `whois-api/src/main/java/net/ripe/db/whois/api/mail/dequeue/BouncedMessageParser.java`
+- `whois-api/src/main/java/net/ripe/db/whois/api/UpdateCreator.java`
+- `whois-update/src/main/java/net/ripe/db/whois/update/domain/UpdateContext.java`
+
+Postfix/Dovecot 示例：
+
+```bash
+sudo apt-get install -y postfix dovecot-imapd dovecot-pop3d dovecot-lmtpd mailutils
 sudo systemctl restart postfix dovecot
-sudo apt install mailutils
-
-//测试一下
-telnet localhost 110 # POP3
-telnet localhost 143 # IMAP
-echo "This is a test message" | mail -s 'test email' mail1@test-cernet.com
-
-//配置maildrop
-参考：http://www.panticz.de/index.php/node/154
-
 ```
 
-/home/gwy/whois/whois/whois-api/src/main/java/net/ripe/db/whois/api/mail/dequeue/MessageDequeue.java line197 mailMessageDao.getMessage(messageId);
-+
-/home/gwy/whois/whois/whois-api/src/main/java/net/ripe/db/whois/api/mail/dao/MailMessageDao.java
-+
-/home/gwy/whois/whois/whois-api/src/main/java/net/ripe/db/whois/api/mail/dao/MailMessageDaoJdbc.java
+基础连通性测试：
 
-email格式解析：
-/home/gwy/whois/whois/whois-api/src/main/java/net/ripe/db/whois/api/mail/dequeue/BouncedMessageParser.java
-
-/home/gwy/whois/whois/whois-api/src/main/java/net/ripe/db/whois/api/UpdateCreator.java
-+
-/home/gwy/whois/whois/whois-update/src/main/java/net/ripe/db/whois/update/domain/UpdateContext.java addmessage向mysql中插入message
-
+```bash
+telnet localhost 25
+telnet localhost 110
+telnet localhost 143
 ```
-# email更新格式，注意在每条更新数据间隔两个空行（包括首行）
+
+邮件更新示例：
+
+```text
 telnet test-cernet.com smtp
-Trying 1.51.2.207...
-Connected to test-cernet.com.
-Escape character is '^]'.
-220 test-cernet.com ESMTP Postfix (Ubuntu)
 helo test-cernet.com
-250 test-cernet.com
 mail from: gwy@test-cernet.com
-250 2.1.0 Ok
 rcpt to: dbase@test-cernet.com
-250 2.1.5 Ok
 data
-354 End data with <CR><LF>.<CR><LF>
 From: gwy <gwy@test-cernet.com>
 To: dbase@test-cernet.com
 Subject: NEW
 
 
-password: ********
-inetnum: 182.16.6.0 - 182.16.6.255
-netname: NL-RIPENCC-TCA6-20120101
-conni: BJ00000009
-org: ORG-CO2-TEST
-descr:          IPv4 address space
-country:        CN # Country is really world wide
-admin-c:        GWY-TEST
-tech-c:         GWY-TEST
-status:         ALLOCATED UNSPECIFIED
-remarks:        The country is really worldwide.
+password: yourpassword
+person:         TEST GWY
+nic-hdl:        AUTO-1
+address:        Singel 258
+phone:          +31-1234567890
+e-mail:         user@example.net
 mnt-by:         TEST-DBM-MNT
-remarks:        This is an automatically created object.
 source:         TEST
 .
-250 2.0.0 Ok: queued as EFB3F1206BA
 quit
-221 2.0.0 Bye
-```
-```
-Escape character is '^]'.
-220 test-cernet.com ESMTP Postfix (Ubuntu)
-helo test-cernet.com
-250 test-cernet.com
-mail from: gwy@test-cernet.com
-250 2.1.0 Ok
-rcpt to: dbase@test-cernet.com
-250 2.1.5 Ok
-data
-354 End data with <CR><LF>.<CR><LF>
-From: gwy <gwy@test-cernet.com>
-To: dbase@test-cernet.com
-Subject: delete inetnum
-
-
-inetnum: 182.16.6.0 - 182.16.6.255
-source:         TEST
-delete:  no longer need
-password: ******
-.
-250 2.0.0 Ok: queued as C05F91212EC
-quit
-221 2.0.0 Bye
-```
-```
-Trying 1.51.2.207...
-Connected to test-cernet.com.
-Escape character is '^]'.
-220 test-cernet.com ESMTP Postfix (Ubuntu)
-helo test-cernet.com
-250 test-cernet.com
-mail from: gwy@test-cernet.com
-250 2.1.0 Ok
-rcpt to: dbase@test-cernet.com
-250 2.1.5 Ok
-data
-354 End data with <CR><LF>.<CR><LF>
-From: gwy <gwy@test-cernet.com>
-To: dbase@test-cernet.com
-Subject: update my objects
-
-
-inetnum:        182.16.7.0 - 182.16.7.255
-netname:        NL-RIPENCC-TCA6-20120102
-conni:          BJ000006
-org:            ORG-CO1-TEST
-descr:          The whole IPv4 address space
-country:        CN # Country is really world wide
-admin-c:        GWY-TEST
-tech-c:         GWY-TEST
-status:         ALLOCATED UNSPECIFIED
-remarks:        The country is really worldwide.
-mnt-by:         TEST-DBM-MNT
-mnt-routes:     TEST-DBM-MNT
-remarks:        This is test for email-updates
-source:         TEST
-password:       ******
-.
-250 2.0.0 Ok: queued as 862131212EC
-quit
-221 2.0.0 Bye
 ```
 
-### MD5 password generate example
-```
+注意：email-update 中每条更新数据之间需要空行分隔。
+
+## MD5 密码生成示例
+
+```python
 # python2
 import crypt
+
 password = 'emptypassword'
 salt = '$1$N2zhyJ3g$'
 print(crypt.crypt(password, salt))
+```
 
-output:
+输出示例：
+
+```text
 $1$N2zhyJ3g$hzX7XTL84DtBkCWhBZE2c/
 ```
 
-### 开启HTTPS
-选择PKCS#1或者PKCS#8，修改/home/gwy/whois/whois/whois-api/src/main/java/net/ripe/db/whois/api/httpserver/WhoisKeystore.java，重新编译，修改properties
+## HTTPS 配置
+
+相关代码：
+
+```text
+whois-api/src/main/java/net/ripe/db/whois/api/httpserver/WhoisKeystore.java
 ```
-# Service ports
-# HTTPS
+
+配置项示例：
+
+```properties
 whois.private.keys=/home/dbase/tmp_server_tra.key
 whois.certificates=/home/dbase/tmp_server.crt
-whois.keystore=/home/dbase/cerbot/server.jks
+whois.keystore=/home/dbase/certbot/server.jks
 port.api.secure=0
+```
 
-# generate key
-keytool -genkeypair -alias whois -keyalg RSA -keysize 4096 -storetype JKS -keystore whois.jks -valid
-ity 3650 -storepass 20240731
-# The JKS keystore uses a proprietary format. It is recommended to 
-# migrate to PKCS12 which is an industry standard format using 
-# "keytool -importkeystore -srckeystore whois.jks -destkeystore 
-# whois.jks -deststoretype pkcs12".
-keytool -export -alias "whois" -keystore whois.jks -storetype JKS -storepass "20240731" -rfc -file "whois.cer"
-keytool -v -importkeystore -srckeystore whois.jks -srcstoretype jks -srcstorepass 20240731 -destkeystore whois.pfx -deststoretype pkcs12 -deststorepass 20240731 -destkeypass 20240731 
+证书生成示例：
+
+```bash
+keytool -genkeypair \
+  -alias whois \
+  -keyalg RSA \
+  -keysize 4096 \
+  -storetype JKS \
+  -keystore whois.jks \
+  -validity 3650 \
+  -storepass 20240731
+
+keytool -export \
+  -alias whois \
+  -keystore whois.jks \
+  -storetype JKS \
+  -storepass 20240731 \
+  -rfc \
+  -file whois.cer
+
+keytool -v -importkeystore \
+  -srckeystore whois.jks \
+  -srcstoretype jks \
+  -srcstorepass 20240731 \
+  -destkeystore whois.pfx \
+  -deststoretype pkcs12 \
+  -deststorepass 20240731 \
+  -destkeypass 20240731
+
 openssl pkcs12 -in whois.pfx -nocerts -nodes -out whois.pri.key
 ```
 
-### 增加nserver
-```
-修改原nserver属性
-原search逻辑：
-/home/gwy/whois/whois/whois-api/src/main/java/net/ripe/db/whois/api/rest/WhoisSearchService.java @Path("/search")
+## nserver 修改线索
 
-/home/gwy/whois/whois/whois-api/src/main/java/net/ripe/db/whois/api/rest/RpslObjectStreamer.java queryHandler.streamResults
+搜索入口：
 
-/home/gwy/whois/whois/whois-query/src/main/java/net/ripe/db/whois/query/handler/QueryHandler.java queryExecutor.execute
-
-/home/gwy/whois/whois/whois-query/src/main/java/net/ripe/db/whois/query/executor/SearchQueryExecutor.java rpslObjectSearcher.search
-
-/home/gwy/whois/whois/whois-query/src/main/java/net/ripe/db/whois/query/executor/RpslObjectSearcher.java line133 executeForObjectType
-修改：
-1.增加NSERVER：
-/home/gwy/whois/whois/whois-rpsl/src/main/java/net/ripe/db/whois/common/rpsl/ObjectType.java
-public enum ObjectType   yes
-/home/gwy/whois/whois/whois-commons/src/main/java/net/ripe/db/whois/common/dao/jdbc/domain/ObjectTypeIds.java 增加nserver对应的typeid yes
-
-2./home/gwy/whois/whois/whois-query/src/main/java/net/ripe/db/whois/query/query/Query.java
-增加ObjectType.NSERVER：
-    private static final EnumSet<ObjectType> GRS_LIMIT_TYPES = EnumSet.of(ObjectType.AUT_NUM, ObjectType.INETNUM, ObjectType.INET6NUM, ObjectType.ROUTE, ObjectType.ROUTE6, ObjectType.DOMAIN);
-    private static final EnumSet<ObjectType> DEFAULT_TYPES_LOOKUP_IN_BOTH_DIRECTIONS = EnumSet.of(ObjectType.INETNUM, ObjectType.INET6NUM, ObjectType.ROUTE, ObjectType.ROUTE6, ObjectType.DOMAIN);
-    private static final EnumSet<ObjectType> DEFAULT_TYPES_ALL = EnumSet.allOf(ObjectType.class);
-yes
-3./home/gwy/whois/whois/whois-query/src/main/java/net/ripe/db/whois/query/executor/RpslObjectSearcher.java
-不做改动，由private Iterable<ResponseObject> indexLookup需要做如下4改动
-由result.add(rpslObjectDao.findByKey(type, searchValue))需要做如下5改动
-
-4./home/gwy/whois/whois/whois-rpsl/src/main/java/net/ripe/db/whois/common/rpsl/ObjectTemplate.java
-修改domain的nserver字段为lookupkey属性/keyarrtribute属性，参考conni no
-
-5. /home/gwy/whois/whois/whois-commons/src/main/java/net/ripe/db/whois/common/dao/jdbc/JdbcRpslObjectDao.java
-类似
-/home/gwy/whois/whois/whois-commons/src/main/java/net/ripe/db/whois/common/dao/jdbc/index/IndexWithConni.java
-实现IndexWithNServer.java
-
-6.从@Path("/syncupdates")看新增nserver的逻辑
-/home/gwy/whois/whois/whois-commons/src/main/java/net/ripe/db/whois/common/dao/jdbc/JdbcRpslObjectUpdateDao.java line215 先更新index再更新last，新增时先更新last再更新index
-在/home/gwy/whois/whois/whois-commons/src/main/java/net/ripe/db/whois/common/dao/jdbc/JdbcRpslObjectOperations.java中实现更新，逻辑不需要改
-nserver表已经有了，将host字段设置为只能填域名AttributeSyntax，需要新增nameserver表，
-/home/gwy/whois/whois/whois-rpsl/src/main/java/net/ripe/db/whois/common/rpsl/attrs/NServer.java yes
+```text
+whois-api/src/main/java/net/ripe/db/whois/api/rest/WhoisSearchService.java
+whois-api/src/main/java/net/ripe/db/whois/api/rest/RpslObjectStreamer.java
+whois-query/src/main/java/net/ripe/db/whois/query/handler/QueryHandler.java
+whois-query/src/main/java/net/ripe/db/whois/query/executor/SearchQueryExecutor.java
 ```
 
-### 路由类 route
+用途：
 
-/home/gwy/whois/whois/whois-client/src/main/java/net/ripe/db/whois/api/rest/client/RestClientTarget.java
+- 支持 `nserver` 类型。
+- 支持基于 `nserver` 的 inverse search。
+- 适配 domain 对象相关存储和索引。

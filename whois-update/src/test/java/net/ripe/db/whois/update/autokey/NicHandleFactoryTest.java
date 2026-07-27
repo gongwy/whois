@@ -106,6 +106,16 @@ public class NicHandleFactoryTest {
     }
 
     @Test
+    public void generate_configured_suffix() {
+        subject.setSource("CERNET");
+        subject.setUserHandleSuffixConfig("CERNET:CER,AP:CER,CN:CER");
+        when(nicHandleRepository.claimNextAvailableIndex("JAS", "CER")).thenReturn(new NicHandle("JAS", 10, "CER"));
+
+        final NicHandle nicHandle = subject.generate("AUTO-111", RpslObject.parse("person: John Archibald Smith\nnic-hdl: AUTO-111"));
+        assertThat(nicHandle.toString(), is("JAS10-CER"));
+    }
+
+    @Test
     public void getAttributeType() {
         assertThat(subject.getAttributeType(), is(AttributeType.NIC_HDL));
     }
@@ -117,6 +127,17 @@ public class NicHandleFactoryTest {
         final NicHandle nicHandle = new NicHandle("DW", 10, "RIPE");
         when(nicHandleRepository.claimSpecified(nicHandle)).thenReturn(true);
         assertThat(subject.claim("DW10-RIPE"), is(nicHandle));
+    }
+
+    @Test
+    public void claim_configured_suffix() throws Exception {
+        subject.setSource("CERNET");
+        subject.setUserHandleSuffixConfig("CERNET:CER,AP:CER,CN:CER");
+        when(countryCodeRepository.getCountryCodes()).thenReturn(Collections.<CIString>emptySet());
+
+        final NicHandle nicHandle = new NicHandle("DW", 10, "CER");
+        when(nicHandleRepository.claimSpecified(nicHandle)).thenReturn(true);
+        assertThat(subject.claim("DW10-CER"), is(nicHandle));
     }
 
     @Test

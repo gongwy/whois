@@ -64,7 +64,11 @@ abstract class AbstractAutoKeyFactory<T extends AutoKey> implements AutoKeyFacto
         }
 
         final String space = getSpace(matcher.group(2), name);
-        return autoKeyRepository.claimNextAvailableIndex(space, getSource().toString());
+        return autoKeyRepository.claimNextAvailableIndex(space, getGeneratedSuffix());
+    }
+
+    protected String getGeneratedSuffix() {
+        return getSource().toString();
     }
 
     private String getSpace(final String space, final String name) {

@@ -47,6 +47,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -60,7 +61,7 @@ import static java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME;
 public class MessageParser {
     private static final Logger LOGGER = LoggerFactory.getLogger(MessageParser.class);
 
-    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss z yyyy");
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss z yyyy", Locale.ENGLISH);
     private static final Pattern HEADER_BASE_64 = Pattern.compile("Content-Transfer-Encoding:\\s+base64*");
     private static final Session SESSION = Session.getInstance(new Properties());
 

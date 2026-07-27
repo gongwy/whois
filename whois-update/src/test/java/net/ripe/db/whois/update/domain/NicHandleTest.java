@@ -121,6 +121,15 @@ public class NicHandleTest {
     }
 
     @Test
+    public void parse_suffix_configured() {
+        final NicHandle nicHandle = NicHandle.parse("AB12-CER", ciString("CERNET"), countryCodes, ciSet("CER"));
+
+        assertThat(nicHandle.getSpace(), is("AB"));
+        assertThat(nicHandle.getIndex(), is(12));
+        assertThat(nicHandle.getSuffix(), is("CER"));
+    }
+
+    @Test
     public void parse_suffix_predefined_lowercase() {
         final NicHandle nicHandle = NicHandle.parse("dw-apnic", source, countryCodes);
 

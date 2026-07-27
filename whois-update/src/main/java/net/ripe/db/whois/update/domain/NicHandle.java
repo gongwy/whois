@@ -3,6 +3,7 @@ package net.ripe.db.whois.update.domain;
 import net.ripe.db.whois.common.domain.CIString;
 import org.apache.commons.lang.StringUtils;
 
+import java.util.Collections;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -24,6 +25,10 @@ public class NicHandle extends AutoKey {
             "AFRINIC");
 
     public static NicHandle parse(final String nicHdl, final CIString source, final Set<CIString> countryCodes) {
+        return parse(nicHdl, source, countryCodes, Collections.<CIString>emptySet());
+    }
+
+    public static NicHandle parse(final String nicHdl, final CIString source, final Set<CIString> countryCodes, final Set<CIString> configuredSuffixes) {
         if (StringUtils.startsWithIgnoreCase(nicHdl, "AUTO-")) {
             throw new NicHandleParseException("Primary key generation request cannot be parsed as NIC-HDL: " + nicHdl);
         }
@@ -35,7 +40,7 @@ public class NicHandle extends AutoKey {
 
         final String characterSpace = matcher.group(1);
         final int index = getIndex(matcher.group(2));
-        final String suffix = getSuffix(matcher.group(3), source, countryCodes);
+        final String suffix = getSuffix(matcher.group(3), source, countryCodes, configuredSuffixes);
 
         return new NicHandle(characterSpace, index, suffix);
     }
@@ -48,7 +53,7 @@ public class NicHandle extends AutoKey {
         return Integer.parseInt(indexString);
     }
 
-    private static String getSuffix(final String suffix, final CIString source, final Set<CIString> countryCodes) {
+    private static String getSuffix(final String suffix, final CIString source, final Set<CIString> countryCodes, final Set<CIString> configuredSuffixes) {
         if (StringUtils.isEmpty(suffix)) {
             return null;
         }
@@ -63,6 +68,10 @@ public class NicHandle extends AutoKey {
         }
 
         if (countryCodes.contains(suffixToCheck)) {
+            return suffix;
+        }
+
+        if (configuredSuffixes.contains(suffixToCheck)) {
             return suffix;
         }
 
