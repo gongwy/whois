@@ -21,12 +21,12 @@
 默认 RIPE 逻辑中，自动生成 NIC-HDL 时后缀来自当前 `whois.source`。本项目新增配置项：
 
 ```properties
-user.handle.suffix.config=CERNET:CER,AP:CER,CN:CER
+user.handle.suffix.config=CERNIC:CER,AP:CER,CN:CER
 ```
 
 含义：
 
-- 当当前 `whois.source` 为 `CERNET`、`AP` 或 `CN` 时，自动生成的 NIC-HDL 后缀使用 `CER`。
+- 当当前 `whois.source` 为 `CERNIC`、`AP` 或 `CN` 时，自动生成的 NIC-HDL 后缀使用 `CER`。
 - 其他未配置的 source 仍使用原有默认规则，即使用当前 source 作为后缀。
 - 配置值中的后缀可以写成 `CER`，也兼容写成 `-CER`，代码会去掉开头的 `-`。
 - 配置项为空时不改变原有行为。
@@ -34,8 +34,8 @@ user.handle.suffix.config=CERNET:CER,AP:CER,CN:CER
 示例：
 
 ```properties
-whois.source=CERNET
-user.handle.suffix.config=CERNET:CER,AP:CER,CN:CER
+whois.source=CERNIC
+user.handle.suffix.config=CERNIC:CER,AP:CER,CN:CER
 ```
 
 此时提交：
@@ -43,7 +43,7 @@ user.handle.suffix.config=CERNET:CER,AP:CER,CN:CER
 ```text
 person:     TEST USER
 nic-hdl:    AUTO-1
-source:     CERNET
+source:     CERNIC
 ```
 
 生成结果会使用类似：
@@ -56,10 +56,10 @@ nic-hdl:    TU1-CER
 
 ```text
 nic-hdl:    XX1-CER
-source:     CERNET
+source:     CERNIC
 ```
 
-在 `whois.source=CERNET` 且配置了 `CERNET:CER` 时会被认为合法。
+在 `whois.source=CERNIC` 且配置了 `CERNIC:CER` 时会被认为合法。
 
 相关代码：
 
@@ -209,24 +209,110 @@ SOURCE ./whois-commons/src/main/resources/nrtm_data.sql;
 telnet localhost 1043
 ```
 
-## 数据加载
+## 旧数据转换与导入
 
-准备测试数据：
+旧系统数据转换脚本为 `tools/convert_rsdb_cernic.py`。脚本不会修改原始数据；输出目录默认为脚本旁的 `rsdb-cernic-import-test/`，其中包含导入文件和转换摘要。输出文件含业务数据，不应提交到 Git 或上传到公共位置。
 
-```bash
-sudo cp whois-scheduler/src/test/resources/TEST.db /home/dbase/
+### 转换旧数据
+
+将旧数据目录放在 `tools/rsdb/`，并确保其中包含以下文件：
+
+```text
+CERNIC.db.pn.txt
+CERNIC.db.ro.txt
+CERNIC.db.in.txt
+CERNIC.db.i6.txt
+CERNIC.db.dn.txt
+CERNIC.db.ht.txt
 ```
 
-使用 jmxterm：
+执行：
 
 ```bash
-java --add-exports jdk.jconsole/sun.tools.jconsole=ALL-UNNAMED -jar jmxterm-1.0.4-uber.jar
-open <PID>
+python3 tools/convert_rsdb_cernic.py
+```
+
+生成：
+
+```text
+tools/rsdb-cernic-import-test/CERNIC-import-test.db
+tools/rsdb-cernic-import-test/conversion-summary.md
+```
+
+转换规则：
+
+- 所有对象的 `source` 统一为 `CERNIC`。
+- 旧 `person`、`role` 的 NIC-HDL 及全部 `admin-c`、`tech-c`、`zone-c` 引用统一改为 `-CER`；发生同名冲突时为后续对象分配可用数字。
+- `conn-i` 转为 `organisation` 主键；同一 `conn-i` 只保留一个 organisation，并从关联对象中择优填充字段。
+- 旧数据中为零的联系人或 organisation 索引改为有效正数，所有引用同步更新。
+- 无法解析的旧联系人引用生成占位 `role`，避免对象引用断裂。
+- IPv4 CIDR 和区间先规范化；重复的 IPv4 记录按较新的 `changed` 值保留。
+- 导入维护者为 `CERNIC-DBM-MNT`；脚本写入其 MD5-PW 密码哈希，对应密码为 `20260805`。
+
+### 启动并通过 JMX 导入
+
+导入目标必须是已按上一节 schema/data 初始化、但没有 RPSL 业务对象的独立数据库。不要对已有生产数据或 `myTEST.db` 执行本操作。`loadDump` 只新增对象，不会清库；校验或加载失败时安全模式会回滚本次导入。
+
+部署配置至少应包含：
+
+```properties
+whois.source=CERNIC
+user.handle.suffix.config=CERNIC:CER
+```
+
+启动 whois，并开启仅本地可访问的 JMX：
+
+```bash
+/usr/bin/java \
+  -Dwhois \
+  -Djsse.enableSNIExtension=false \
+  -Dcom.sun.management.jmxremote \
+  -Dcom.sun.management.jmxremote.authenticate=false \
+  -Dcom.sun.management.jmxremote.ssl=false \
+  -Dcom.sun.management.jmxremote.port=1099 \
+  -Dcom.sun.management.jmxremote.rmi.port=1099 \
+  -Djava.rmi.server.hostname=127.0.0.1 \
+  -Xms1024m \
+  -Xmx8g \
+  -Dwhois.config=properties \
+  -Duser.timezone=UTC \
+  -Dhazelcast.config=hazelcast.xml \
+  -Dlog4j.configurationFile=file:log4j2.xml \
+  -jar whois.jar
+```
+
+下载并调用 jmxterm：
+
+```bash
+curl -fLO https://repo1.maven.org/maven2/org/cyclopsgroup/jmxterm/1.0.4/jmxterm-1.0.4-uber.jar
+java --add-exports jdk.jconsole/sun.tools.jconsole=ALL-UNNAMED \
+  -jar jmxterm-1.0.4-uber.jar
+```
+
+在 jmxterm 中执行，导入文件使用绝对路径：
+
+```text
+open 127.0.0.1:1099
 bean net.ripe.db.whois:name=Bootstrap
-run loadDump comment TEST.db
+run loadDump cernic-import /absolute/path/to/CERNIC-import-test.db
 ```
 
-看到 `220 succeed` 表示加载成功。
+返回内容中应包含：
+
+```text
+Ran in transactional, safe mode: committing DB changes
+FINISHED
+<对象数量> succeeded
+0 failed in pass 1
+0 failed in pass 2
+```
+
+`<对象数量>` 取决于实际旧数据，不是示例数据的固定值。导入后可查询联系人和网段验证引用，例如：
+
+```bash
+printf 'AA2-CER\r\n' | nc -w 8 127.0.0.1 <port.query>
+curl http://127.0.0.1:1080/whois/CERNIC/person/AA2-CER
+```
 
 ## SyncUpdates 示例
 
