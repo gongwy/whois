@@ -2,16 +2,25 @@
 """Convert legacy CERNIC RPSL files into an importable CERNIC test dump."""
 
 from collections import Counter, defaultdict
+import argparse
+import csv
 import ipaddress
 from pathlib import Path
 import re
+from xml.etree import ElementTree
+from zipfile import ZipFile
 
 ROOT = Path(__file__).parent
 SOURCE = ROOT / "rsdb"
 OUT = ROOT / "rsdb-cernic-import-test"
 WHOIS = ROOT.parent / "myTEST.db"
+REVIEW = ROOT / "org_duplicates.xlsx"
 WHOIS_SOURCE = "CERNIC"
 MNTNER = "CERNIC-DBM-MNT"
+
+
+class ReviewValidationError(ValueError):
+    pass
 
 
 def objects(path, first):
@@ -73,14 +82,128 @@ def handle_parts(value):
     return match.groups() if match else None
 
 
-def main():
-    OUT.mkdir(exist_ok=True)
-    people = list(objects(SOURCE / "CERNIC.db.pn.txt", "person:"))
-    roles = list(objects(SOURCE / "CERNIC.db.ro.txt", "role:"))
-    inet4 = list(objects(SOURCE / "CERNIC.db.in.txt", "inetnum:"))
-    inet6 = list(objects(SOURCE / "CERNIC.db.i6.txt", "*i6:"))
-    domains = list(objects(SOURCE / "CERNIC.db.dn.txt", "domain:"))
-    hosts = list(objects(SOURCE / "CERNIC.db.ht.txt", "host:"))
+def column_number(reference):
+    number = 0
+    for character in re.match(r"[A-Z]+", reference).group():
+        number = number * 26 + ord(character) - ord("A") + 1
+    return number
+
+
+def read_review_overrides(path):
+    if path is None:
+        return {}
+    if not path.is_file():
+        raise FileNotFoundError(f"Organisation review overrides are missing: {path}")
+
+    with path.open(encoding="utf-8", newline="") as file:
+        rows = csv.DictReader(file)
+        required = {"orgid", "c-org-name", "org-name"}
+        if not required.issubset(rows.fieldnames or set()):
+            raise ReviewValidationError("Override CSV must contain: orgid,c-org-name,org-name")
+        return {
+            row["orgid"].strip(): {
+                "c-org-name": row["c-org-name"].strip(),
+                "org-name": row["org-name"].strip(),
+            }
+            for row in rows
+            if row.get("orgid", "").strip()
+        }
+
+
+def read_reviewed_organisations(review, overrides):
+    if not review.is_file():
+        raise FileNotFoundError(f"Reviewed organisation workbook is missing: {review}")
+
+    main = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    rels = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+    package_rels = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+
+    with ZipFile(review) as workbook:
+        shared = ["".join(item.itertext()) for item in ElementTree.fromstring(workbook.read("xl/sharedStrings.xml"))]
+        sheets = ElementTree.fromstring(workbook.read("xl/workbook.xml"))
+        relationships = ElementTree.fromstring(workbook.read("xl/_rels/workbook.xml.rels"))
+        targets = {item.attrib["Id"]: item.attrib["Target"] for item in relationships.findall(f"{package_rels}Relationship")}
+        sheet = next(item for item in sheets.findall(f"{main}sheets/{main}sheet") if item.attrib["name"] == "核对结果")
+        worksheet_path = "xl/" + targets[sheet.attrib[f"{rels}id"]]
+        worksheet = ElementTree.fromstring(workbook.read(worksheet_path))
+
+    reviewed, orgids_by_chinese_name, errors = {}, {}, []
+    for row in worksheet.findall(f"{main}sheetData/{main}row"):
+        values = {}
+        for cell in row.findall(f"{main}c"):
+            value = cell.find(f"{main}v")
+            if value is None:
+                continue
+            cell_value = shared[int(value.text)] if cell.attrib.get("t") == "s" else value.text
+            values[column_number(cell.attrib["r"])] = cell_value
+
+        if values.get(1) == "序号" or not values.get(2) or not values.get(3):
+            continue
+
+        orgid = values[2].strip()
+        chosen = split_reviewed_name(values[3])
+        if chosen is None:
+            override = overrides.get(orgid)
+            if override:
+                chosen = override["c-org-name"], override["org-name"]
+            else:
+                errors.append(f"- {orgid}: selected value needs c-org-name and org-name: {values[3]}")
+                continue
+        chosen_chinese_name, chosen_org_name = chosen
+        old_names = set()
+        for column, value in values.items():
+            if column < 4 or not value:
+                continue
+            candidate = split_reviewed_name(value)
+            if candidate is None:
+                errors.append(f"- {orgid}: candidate value is invalid: {value}")
+                continue
+            old_names.add(candidate[1])
+        old_names.add(chosen_org_name)
+        reviewed[orgid] = {
+            "c-org-name": chosen_chinese_name,
+            "org-name": chosen_org_name,
+            "old-org-names": old_names,
+        }
+
+        for column, value in values.items():
+            if column < 3 or not value:
+                continue
+            candidate = split_reviewed_name(value)
+            if candidate:
+                orgids_by_chinese_name.setdefault(candidate[0], set()).add(orgid)
+
+    if errors:
+        raise ReviewValidationError("Invalid organisation review data:\n" + "\n".join(errors))
+
+    return reviewed, orgids_by_chinese_name
+
+
+def split_reviewed_name(value):
+    normalized = value.replace("（", "(").replace("）", ")").strip()
+    if "(" not in normalized:
+        return None
+    chinese_name, org_name = normalized.rsplit("(", 1)
+    chinese_name = chinese_name.rstrip(" (").strip()
+    org_name = org_name.rstrip(")").strip()
+    return (chinese_name, org_name) if chinese_name and org_name else None
+
+
+def main(source, out, whois, review, overrides):
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        reviewed_organisations, orgids_by_chinese_name = read_reviewed_organisations(
+            review, read_review_overrides(overrides))
+    except ReviewValidationError as error:
+        (out / "review-validation-errors.md").write_text(f"# Review validation errors\n\n{error}\n", encoding="utf-8")
+        raise
+    conversion_stats = Counter()
+    people = list(objects(source / "CERNIC.db.pn.txt", "person:"))
+    roles = list(objects(source / "CERNIC.db.ro.txt", "role:"))
+    inet4 = list(objects(source / "CERNIC.db.in.txt", "inetnum:"))
+    inet6 = list(objects(source / "CERNIC.db.i6.txt", "*i6:"))
+    domains = list(objects(source / "CERNIC.db.dn.txt", "domain:"))
+    hosts = list(objects(source / "CERNIC.db.ht.txt", "host:"))
 
     contacts = [("person", obj) for obj in people] + [("role", obj) for obj in roles]
     by_base = defaultdict(list)
@@ -118,7 +241,7 @@ def main():
     placeholders = sorted(set(references) - primary)
     fallback_handle = "WIO1-CER"
     default_notify = "integration@example.invalid"
-    for obj in objects(WHOIS, "person:"):
+    for obj in objects(whois, "person:"):
         if one(obj, "nic-hdl").upper().endswith("-CERNIC"):
             fallback_handle = one(obj, "nic-hdl").upper().replace("-CERNIC", "-CER")
             default_notify = one(obj, "e-mail", default_notify)
@@ -130,7 +253,7 @@ def main():
             org_resources[one(obj, "conn-i")].append(obj)
     org_id_map, used_org = {}, set()
     invalid_index = 1
-    for old in sorted(org_resources):
+    for old in sorted(set(org_resources) | set(reviewed_organisations)):
         candidate = old.upper()
         match = re.fullmatch(r"([A-Z]{2,4})(\d+)", candidate)
         if match and int(match.group(2)) > 0:
@@ -145,6 +268,7 @@ def main():
             invalid_index += 1
         org_id_map[old] = candidate
         used_org.add(candidate)
+    normalized_org_id_map = {old.upper(): org_id for old, org_id in org_id_map.items()}
 
     dump = []
     dump.extend([
@@ -180,12 +304,18 @@ def main():
         dump.extend(lines)
 
     for old, org_id in sorted(org_id_map.items()):
-        related = org_resources[old]
+        related = org_resources.get(old, [])
         names = [value for obj in related for value in obj.get("descr", [])]
         admins = [ref(value) for obj in related for value in obj.get("admin-c", []) if ref(value) in primary or ref(value) in placeholders]
         admin = Counter(admins).most_common(1)[0][0] if admins else fallback_handle
-        org_name = Counter(names).most_common(1)[0][0] if names else f"Legacy organisation {org_id}"
-        dump += [f"organisation: {org_id}", f"org-name: {org_name}", "c-cityid: 110000", f"admin-c: {admin}", f"mnt-by: {MNTNER}", f"source: {WHOIS_SOURCE}", ""]
+        reviewed = reviewed_organisations.get(old.upper())
+        org_name = reviewed["org-name"] if reviewed else Counter(names).most_common(1)[0][0] if names else f"Legacy organisation {org_id}"
+        lines = [f"organisation: {org_id}", f"org-name: {org_name}"]
+        if reviewed:
+            lines.append(f"c-org-name: {reviewed['c-org-name']}")
+            conversion_stats["reviewed_organisations"] += 1
+        lines += ["c-cityid: 110000", f"admin-c: {admin}", f"mnt-by: {MNTNER}", f"source: {WHOIS_SOURCE}", ""]
+        dump.extend(lines)
 
     def resource(obj, typ, primary_key, netname_required=False):
         primary_value = one(obj, primary_key)
@@ -194,10 +324,25 @@ def main():
         lines = [f"{typ}: {primary_value}"]
         if netname_required:
             lines.append(f"netname: {one(obj, 'netname')}")
-        if one(obj, "conn-i") in org_id_map:
-            lines.append(f"org: {org_id_map[one(obj, 'conn-i')]}")
+        org_id = org_id_map.get(one(obj, "conn-i"))
+        domain_orgids = orgids_by_chinese_name.get(one(obj, "c-orgname"), set())
+        if typ == "domain" and len(domain_orgids) == 1:
+            reviewed_orgid = next(iter(domain_orgids))
+            org_id = normalized_org_id_map.get(reviewed_orgid, reviewed_orgid)
+        if org_id:
+            lines.append(f"org: {org_id}")
         add(lines, "conn-p", obj.get("conn-p", []))
         add(lines, "descr", obj.get("descr", []))
+        reviewed = reviewed_organisations.get(one(obj, "conn-i").upper())
+        if typ == "domain" and len(domain_orgids) == 1:
+            reviewed = reviewed_organisations.get(next(iter(domain_orgids)))
+        if reviewed:
+            old_names = set(obj.get("descr", [])) & reviewed["old-org-names"]
+            if typ == "domain" and one(obj, "orgname"):
+                old_names.add(one(obj, "orgname"))
+            legacy_names = sorted(old_names - {reviewed["org-name"]})
+            add(lines, "descr", [f"legacy-org-name: {name}" for name in legacy_names])
+            conversion_stats["legacy_org_name_descriptions"] += len(legacy_names)
         add(lines, "country", obj.get("country", []))
         for key in ("admin-c", "tech-c", "zone-c"):
             add(lines, key, [ref(value) for value in obj.get(key, [])])
@@ -228,19 +373,28 @@ def main():
         lines += [f"source: {WHOIS_SOURCE}", ""]
         dump.extend(lines)
 
-    (OUT / "CERNIC-import-test.db").write_text("\n".join(dump), encoding="utf-8")
-    (OUT / "conversion-summary.md").write_text(
+    (out / "CERNIC-import-test.db").write_text("\n".join(dump), encoding="utf-8")
+    (out / "conversion-summary.md").write_text(
         "# Conversion summary\n\n"
         f"- Source is normalized to `{WHOIS_SOURCE}`.\n"
         "- All legacy contact handles and references are normalized to `-CER`.\n"
-        "- Reused `conn-i` values produce one organisation; its fields are selected from the most complete associated records.\n"
+        "- Reused `conn-i` values produce one organisation; reviewed organisation IDs with only domain references are also generated.\n"
         "- Legacy zero-valued contact and organisation indexes are reassigned to valid positive indexes; all generated references follow the reassignment.\n"
         "- Unresolved contact references receive placeholder role objects.\n"
         "- IPv4 CIDR and range representations are normalized before deduplication; conflicting records prefer the newest legacy changed value.\n"
+        f"- Reviewed organisation names applied: {conversion_stats['reviewed_organisations']}.\n"
+        f"- Resource legacy organisation descriptions added: {conversion_stats['legacy_org_name_descriptions']}.\n"
         f"- Generated organisations: {len(org_id_map)}.\n"
         f"- Generated placeholder roles: {len(placeholders)}.\n",
         encoding="utf-8")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source-dir", type=Path, default=SOURCE, help="Directory containing legacy CERNIC.db.*.txt files")
+    parser.add_argument("--review-workbook", type=Path, default=REVIEW, help="Reviewed duplicate organisation workbook")
+    parser.add_argument("--review-overrides", type=Path, help="Private CSV for selected values that cannot be parsed from the workbook")
+    parser.add_argument("--output-dir", type=Path, default=OUT, help="Directory for the generated private import dump")
+    parser.add_argument("--bootstrap-dump", type=Path, default=WHOIS, help="Existing dump used to obtain the import operator contact")
+    args = parser.parse_args()
+    main(args.source_dir, args.output_dir, args.bootstrap_dump, args.review_workbook, args.review_overrides)

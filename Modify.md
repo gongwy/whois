@@ -215,7 +215,7 @@ telnet localhost 1043
 
 ### 转换旧数据
 
-将旧数据目录放在 `tools/rsdb/`，并确保其中包含以下文件：
+准备旧数据目录、重复 organisation 核对工作簿和一个空输出目录。旧数据目录中应包含以下文件：
 
 ```text
 CERNIC.db.pn.txt
@@ -226,28 +226,42 @@ CERNIC.db.dn.txt
 CERNIC.db.ht.txt
 ```
 
-执行：
+核对工作簿使用 `核对结果` 页：`orgid` 位于 B 列，最终选择位于 C 列，格式为 `c-org-name (org-name)`。如选中的单元格不包含完整的一对中英文名称，使用本地私有 CSV 补全，格式如下；该文件含业务数据，不提交 Git：
+
+```csv
+orgid,c-org-name,org-name
+...
+```
+
+执行（路径按实际数据调整）：
 
 ```bash
-python3 tools/convert_rsdb_cernic.py
+python3 tools/convert_rsdb_cernic.py \
+  --source-dir /absolute/path/to/rsdb \
+  --review-workbook /absolute/path/to/org_duplicates.xlsx \
+  --review-overrides /absolute/path/to/org_duplicates_overrides.csv \
+  --output-dir /absolute/path/to/cernic-import-output \
+  --bootstrap-dump /absolute/path/to/myTEST.db
 ```
 
 生成：
 
 ```text
-tools/rsdb-cernic-import-test/CERNIC-import-test.db
-tools/rsdb-cernic-import-test/conversion-summary.md
+/absolute/path/to/cernic-import-output/CERNIC-import-test.db
+/absolute/path/to/cernic-import-output/conversion-summary.md
 ```
 
 转换规则：
 
 - 所有对象的 `source` 统一为 `CERNIC`。
 - 旧 `person`、`role` 的 NIC-HDL 及全部 `admin-c`、`tech-c`、`zone-c` 引用统一改为 `-CER`；发生同名冲突时为后续对象分配可用数字。
-- `conn-i` 转为 `organisation` 主键；同一 `conn-i` 只保留一个 organisation，并从关联对象中择优填充字段。
+- `conn-i` 转为 `organisation` 主键；同一 `conn-i` 只保留一个 organisation。已核对的重复 ID 使用工作簿最终选择的 `org-name` 与 `c-org-name`；仅被 domain 引用的已核对 organisation 也会生成，避免悬空 `org` 引用。
+- 对已核对 organisation，资源对象原有的非最终 `org-name` 会以 `descr: legacy-org-name: ...` 保留；domain 通过唯一的 `c-orgname` 关联到对应 organisation。无法唯一关联的 domain 不猜测、不写入 `org`。
 - 旧数据中为零的联系人或 organisation 索引改为有效正数，所有引用同步更新。
 - 无法解析的旧联系人引用生成占位 `role`，避免对象引用断裂。
 - IPv4 CIDR 和区间先规范化；重复的 IPv4 记录按较新的 `changed` 值保留。
 - 导入维护者为 `CERNIC-DBM-MNT`；脚本写入其 MD5-PW 密码哈希，对应密码为 `20260805`。
+- 转换前会校验核对工作簿；失败时只生成 `review-validation-errors.md`，不会生成可导入 dump。
 
 ### 启动并通过 JMX 导入
 
