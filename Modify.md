@@ -256,7 +256,7 @@ python3 tools/convert_rsdb_cernic.py \
 - 所有对象的 `source` 统一为 `CERNIC`。
 - 旧 `person`、`role` 的 NIC-HDL 及全部 `admin-c`、`tech-c`、`zone-c` 引用统一改为 `-CER`；发生同名冲突时为后续对象分配可用数字。
 - `conn-i` 转为 `organisation` 主键；同一 `conn-i` 只保留一个 organisation。已核对的重复 ID 使用工作簿最终选择的 `org-name` 与 `c-org-name`；仅被 domain 引用的已核对 organisation 也会生成，避免悬空 `org` 引用。
-- 对已核对 organisation，资源对象原有的非最终 `org-name` 会以 `descr: legacy-org-name: ...` 保留；domain 通过唯一的 `c-orgname` 关联到对应 organisation。无法唯一关联的 domain 不猜测、不写入 `org`。
+- 对已核对 organisation，资源对象原有的非最终 `org-name` 会以 `descr: legacy-org-name: ...` 保留。domain 按唯一 `netname` 优先关联 inet/inet6 的 organisation，其次才使用唯一 `c-orgname`；两者均未匹配且 `c-province` 为 `新疆` 时关联到 `BJ000035`（赛尔网络有限公司）。已有 `netname` 匹配不会被新疆规则覆盖。无法唯一关联的 domain 不猜测、不写入 `org`。
 - 旧数据中为零的联系人或 organisation 索引改为有效正数，所有引用同步更新。
 - 无法解析的旧联系人引用生成占位 `role`，避免对象引用断裂。
 - IPv4 CIDR 和区间先规范化；重复的 IPv4 记录按较新的 `changed` 值保留。

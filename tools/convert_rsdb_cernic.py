@@ -269,6 +269,54 @@ def main(source, out, whois, review, overrides):
         org_id_map[old] = candidate
         used_org.add(candidate)
     normalized_org_id_map = {old.upper(): org_id for old, org_id in org_id_map.items()}
+    reviewed_by_generated_orgid = {
+        normalized_org_id_map[old.upper()]: reviewed
+        for old, reviewed in reviewed_organisations.items()
+        if old.upper() in normalized_org_id_map
+    }
+
+    orgids_by_netname = defaultdict(set)
+    orgids_by_english_name = defaultdict(set)
+    for obj in inet4 + inet6:
+        orgid = normalized_org_id_map[one(obj, "conn-i").upper()]
+        netname = one(obj, "netname").strip().casefold()
+        if netname:
+            orgids_by_netname[netname].add(orgid)
+        for name in obj.get("descr", []):
+            if name:
+                orgids_by_english_name[name.strip().casefold()].add(orgid)
+
+    orgids_by_person_chinese_name = defaultdict(set)
+    for _, obj in contacts:
+        chinese_name = one(obj, "c-orgname").strip()
+        english_name = one(obj, "orgname").strip().casefold()
+        if chinese_name and english_name:
+            orgids_by_person_chinese_name[chinese_name].update(orgids_by_english_name.get(english_name, set()))
+
+    def domain_organisation(obj):
+        netname_orgids = orgids_by_netname.get(one(obj, "netname").strip().casefold(), set())
+        if len(netname_orgids) == 1:
+            conversion_stats["domain_netname_matches"] += 1
+            return next(iter(netname_orgids))
+
+        chinese_name = one(obj, "c-orgname").strip()
+        chinese_orgids = set(orgids_by_person_chinese_name.get(chinese_name, set()))
+        chinese_orgids.update(
+            normalized_org_id_map.get(orgid.upper(), orgid)
+            for orgid in orgids_by_chinese_name.get(chinese_name, set()))
+        if len(chinese_orgids) == 1:
+            conversion_stats["domain_c_orgname_matches"] += 1
+            return next(iter(chinese_orgids))
+
+        if one(obj, "c-province").strip() == "新疆":
+            conversion_stats["domain_xinjiang_fallback_matches"] += 1
+            return normalized_org_id_map["BJ000035"]
+
+        if netname_orgids or chinese_orgids:
+            conversion_stats["domain_ambiguous_organisation_matches"] += 1
+        else:
+            conversion_stats["domain_unmatched_organisations"] += 1
+        return None
 
     dump = []
     dump.extend([
@@ -325,17 +373,15 @@ def main(source, out, whois, review, overrides):
         if netname_required:
             lines.append(f"netname: {one(obj, 'netname')}")
         org_id = org_id_map.get(one(obj, "conn-i"))
-        domain_orgids = orgids_by_chinese_name.get(one(obj, "c-orgname"), set())
-        if typ == "domain" and len(domain_orgids) == 1:
-            reviewed_orgid = next(iter(domain_orgids))
-            org_id = normalized_org_id_map.get(reviewed_orgid, reviewed_orgid)
+        if typ == "domain":
+            org_id = domain_organisation(obj)
         if org_id:
             lines.append(f"org: {org_id}")
         add(lines, "conn-p", obj.get("conn-p", []))
         add(lines, "descr", obj.get("descr", []))
         reviewed = reviewed_organisations.get(one(obj, "conn-i").upper())
-        if typ == "domain" and len(domain_orgids) == 1:
-            reviewed = reviewed_organisations.get(next(iter(domain_orgids)))
+        if typ == "domain":
+            reviewed = reviewed_by_generated_orgid.get(org_id)
         if reviewed:
             old_names = set(obj.get("descr", [])) & reviewed["old-org-names"]
             if typ == "domain" and one(obj, "orgname"):
@@ -384,6 +430,11 @@ def main(source, out, whois, review, overrides):
         "- IPv4 CIDR and range representations are normalized before deduplication; conflicting records prefer the newest legacy changed value.\n"
         f"- Reviewed organisation names applied: {conversion_stats['reviewed_organisations']}.\n"
         f"- Resource legacy organisation descriptions added: {conversion_stats['legacy_org_name_descriptions']}.\n"
+        f"- Domain organisation matches by netname: {conversion_stats['domain_netname_matches']}.\n"
+        f"- Domain organisation matches by c-orgname: {conversion_stats['domain_c_orgname_matches']}.\n"
+        f"- Domain organisation matches by Xinjiang fallback: {conversion_stats['domain_xinjiang_fallback_matches']}.\n"
+        f"- Domains without a safe organisation match: {conversion_stats['domain_unmatched_organisations']}.\n"
+        f"- Domains with ambiguous organisation matches: {conversion_stats['domain_ambiguous_organisation_matches']}.\n"
         f"- Generated organisations: {len(org_id_map)}.\n"
         f"- Generated placeholder roles: {len(placeholders)}.\n",
         encoding="utf-8")
