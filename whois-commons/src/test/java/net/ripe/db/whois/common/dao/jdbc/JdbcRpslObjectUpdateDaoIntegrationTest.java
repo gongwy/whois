@@ -393,6 +393,20 @@ public class JdbcRpslObjectUpdateDaoIntegrationTest extends AbstractDaoIntegrati
     }
 
     @Test
+    public void create_long_chinese_organisation_name() {
+        final String longName = "\u4e2d".repeat(600);
+        subject.createObject(new RpslObject(1, ImmutableList.of(
+                new RpslAttribute("organisation", "O1"),
+                new RpslAttribute("org-name", "Long organisation"),
+                new RpslAttribute("c-org-name", longName))));
+
+        final List<RpslObjectInfo> result = IndexStrategies.get(AttributeType.C_ORG_NAME).findInIndex(whoisTemplate, longName);
+
+        assertThat(result, hasSize(1));
+        assertConsistsOfObjectIds(result, new int[]{1});
+    }
+
+    @Test
     public void delete_nonexistant_object() {
         assertThrows(EmptyResultDataAccessException.class, () -> {
             subject.deleteObject(999, "");

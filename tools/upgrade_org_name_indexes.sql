@@ -1,0 +1,9 @@
+ALTER TABLE `org_name`
+  DROP PRIMARY KEY,
+  MODIFY `name` VARCHAR(2048) CHARACTER SET utf8mb4 NOT NULL DEFAULT '',
+  ADD PRIMARY KEY (`name`(512), `object_id`);
+
+ALTER TABLE `c_org_name`
+  DROP PRIMARY KEY,
+  MODIFY `name` VARCHAR(2048) CHARACTER SET utf8mb4 NOT NULL DEFAULT '',
+  ADD PRIMARY KEY (`name`(512), `object_id`);

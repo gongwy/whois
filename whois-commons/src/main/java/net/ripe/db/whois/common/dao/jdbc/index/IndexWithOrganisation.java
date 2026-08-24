@@ -2,6 +2,7 @@ package net.ripe.db.whois.common.dao.jdbc.index;
 
 import net.ripe.db.whois.common.dao.RpslObjectInfo;
 import net.ripe.db.whois.common.dao.jdbc.domain.RpslObjectInfoResultSetExtractor;
+import net.ripe.db.whois.common.domain.CIString;
 import net.ripe.db.whois.common.rpsl.AttributeType;
 import net.ripe.db.whois.common.rpsl.RpslObject;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -17,7 +18,8 @@ class IndexWithOrganisation extends IndexStrategySimpleLookup {
 
     @Override
     public int addToIndex(final JdbcTemplate jdbcTemplate, final RpslObjectInfo objectInfo, final RpslObject object, final String value) {
-        final String cityid = object.getValueForAttribute(AttributeType.C_CITY_ID).toString();
+        final CIString cityIdAttribute = object.getValueOrNullForAttribute(AttributeType.C_CITY_ID);
+        final String cityid = cityIdAttribute == null ? "" : cityIdAttribute.toString();
         final String query = String.format("INSERT INTO %s (object_id, %s, city_id) VALUES (?, ?, ?)", lookupTableName, lookupColumnName);
         return jdbcTemplate.update(query, objectInfo.getObjectId(), value, cityid);
     }

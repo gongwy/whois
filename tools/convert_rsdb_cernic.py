@@ -5,6 +5,7 @@ from collections import Counter, defaultdict
 import argparse
 import csv
 import ipaddress
+import json
 from pathlib import Path
 import re
 from xml.etree import ElementTree
@@ -189,8 +190,49 @@ def split_reviewed_name(value):
     return (chinese_name, org_name) if chinese_name and org_name else None
 
 
-def main(source, out, whois, review, overrides):
+def normalized_location(value):
+    return re.sub(r"[\s.。·、,，()（）]", "", value).removesuffix("市")
+
+
+def read_city_codes(path):
+    if path is None or not path.is_file():
+        raise FileNotFoundError("City code map is missing; generate it with tools/extract_city_code_map.mjs")
+    with path.open(encoding="utf-8") as file:
+        return json.load(file)
+
+
+def resolve_city_code(city_codes, city, province):
+    city_key = normalized_location(city)
+    province_key = normalized_location(province)
+
+    city_matches = {
+        code for name, code in city_codes["cities"].items()
+        if normalized_location(name) == city_key
+    }
+    if len(city_matches) == 1:
+        return next(iter(city_matches)), "city"
+
+    location_matches = {
+        code
+        for name, codes in city_codes["locations"].items()
+        if normalized_location(name) == city_key or normalized_location(name) in city_key
+        for code in codes
+    }
+    if len(location_matches) == 1:
+        return next(iter(location_matches)), "district"
+
+    province_matches = {
+        code for name, code in city_codes["provinces"].items()
+        if normalized_location(name) == province_key or normalized_location(name).startswith(province_key)
+    }
+    if len(province_matches) == 1:
+        return next(iter(province_matches)), "province-fallback"
+    return "000000", "unknown-fallback"
+
+
+def main(source, out, whois, review, overrides, city_codes_path):
     out.mkdir(parents=True, exist_ok=True)
+    city_codes = read_city_codes(city_codes_path)
     try:
         reviewed_organisations, orgids_by_chinese_name = read_reviewed_organisations(
             review, read_review_overrides(overrides))
@@ -198,6 +240,7 @@ def main(source, out, whois, review, overrides):
         (out / "review-validation-errors.md").write_text(f"# Review validation errors\n\n{error}\n", encoding="utf-8")
         raise
     conversion_stats = Counter()
+    city_id_rows = []
     people = list(objects(source / "CERNIC.db.pn.txt", "person:"))
     roles = list(objects(source / "CERNIC.db.ro.txt", "role:"))
     inet4 = list(objects(source / "CERNIC.db.in.txt", "inetnum:"))
@@ -386,10 +429,18 @@ def main(source, out, whois, review, overrides):
         add(lines, "descr", [f"legacy-org-name: {name}" for name in legacy_names])
         legacy_chinese_names = sorted(set(chinese_names) - {c_org_name})
         add(lines, "remarks", [f"legacy-c-org-name: {name}" for name in legacy_chinese_names])
+        location_values = {}
         for key in ("street", "c-street", "city", "c-city", "province", "c-province", "country"):
             value = most_common([one(obj, key) for obj in related_domains])
+            location_values[key] = value
             if value:
                 lines.append(f"{key}: {value}")
+        city_id, city_id_resolution = resolve_city_code(
+            city_codes,
+            location_values["c-city"], location_values["c-province"])
+        lines.append(f"c-cityid: {city_id}")
+        conversion_stats[f"city_id_{city_id_resolution}"] += 1
+        city_id_rows.append((org_id, location_values["c-city"], location_values["c-province"], city_id, city_id_resolution))
         add(lines, "notify", [value for obj in related + related_domains for value in obj.get("notify", [])])
         lines += [f"mnt-by: {MNTNER}", f"source: {WHOIS_SOURCE}", ""]
         dump.extend(lines)
@@ -459,6 +510,10 @@ def main(source, out, whois, review, overrides):
         writer.writerow(["reason", "domain", "netname", "orgname", "c-orgname", "province", "c-province", "city", "c-city"])
         for obj, reason in skipped_domains:
             writer.writerow([reason] + [one(obj, key) for key in ("domain", "netname", "orgname", "c-orgname", "province", "c-province", "city", "c-city")])
+    with (out / "organisation-city-codes.tsv").open("w", encoding="utf-8", newline="") as file:
+        writer = csv.writer(file, delimiter="\t")
+        writer.writerow(["organisation", "c-city", "c-province", "c-cityid", "resolution"])
+        writer.writerows(city_id_rows)
     (out / "conversion-summary.md").write_text(
         "# Conversion summary\n\n"
         f"- Source is normalized to `{WHOIS_SOURCE}`.\n"
@@ -475,6 +530,7 @@ def main(source, out, whois, review, overrides):
         f"- Domains without a safe organisation match: {conversion_stats['domain_unmatched_organisations']}.\n"
         f"- Domains with ambiguous organisation matches: {conversion_stats['domain_ambiguous_organisation_matches']}.\n"
         f"- Skipped domains: {len(skipped_domains)} (see `skipped-domains.tsv`).\n"
+        f"- Organisation city IDs matched by city: {conversion_stats['city_id_city']}; by district: {conversion_stats['city_id_district']}; province fallback: {conversion_stats['city_id_province-fallback']}; unknown fallback: {conversion_stats['city_id_unknown-fallback']} (see `organisation-city-codes.tsv`).\n"
         f"- Generated organisations: {len(org_id_map)}.\n"
         f"- Generated placeholder roles: {len(placeholders)}.\n",
         encoding="utf-8")
@@ -487,5 +543,6 @@ if __name__ == "__main__":
     parser.add_argument("--review-overrides", type=Path, help="Private CSV for selected values that cannot be parsed from the workbook")
     parser.add_argument("--output-dir", type=Path, default=OUT, help="Directory for the generated private import dump")
     parser.add_argument("--bootstrap-dump", type=Path, default=WHOIS, help="Existing dump used to obtain the import operator contact")
+    parser.add_argument("--city-code-map", type=Path, required=True, help="JSON map generated from the website's constant.js")
     args = parser.parse_args()
-    main(args.source_dir, args.output_dir, args.bootstrap_dump, args.review_workbook, args.review_overrides)
+    main(args.source_dir, args.output_dir, args.bootstrap_dump, args.review_workbook, args.review_overrides, args.city_code_map)

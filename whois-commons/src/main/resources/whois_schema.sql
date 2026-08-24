@@ -737,8 +737,8 @@ DROP TABLE IF EXISTS `org_name`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `org_name` (
   `object_id` int(10) unsigned NOT NULL DEFAULT '0',
-  `name` varchar(64) NOT NULL DEFAULT '',
-  PRIMARY KEY (`name`,`object_id`),
+  `name` varchar(2048) NOT NULL DEFAULT '',
+  PRIMARY KEY (`name`(512),`object_id`),
   KEY `object_id` (`object_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -752,10 +752,10 @@ DROP TABLE IF EXISTS `c_org_name`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `c_org_name` (
   `object_id` int(10) unsigned NOT NULL DEFAULT '0',
-  `name` varchar(64) NOT NULL DEFAULT '',
-  PRIMARY KEY (`name`,`object_id`),
+  `name` varchar(2048) NOT NULL DEFAULT '',
+  PRIMARY KEY (`name`(512),`object_id`),
   KEY `object_id` (`object_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --

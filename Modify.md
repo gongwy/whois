@@ -156,6 +156,12 @@ innodb_buffer_pool_size = 2G
 sudo service mysql restart
 ```
 
+机构名称索引使用 `utf8mb4`，并支持最长 2048 个字符的 `org-name`、`c-org-name`。新建数据库会自动使用该结构；已有数据库在停止 whois 后执行一次：
+
+```bash
+mysql -u <数据库用户> -p <WHOIS数据库名> < tools/upgrade_org_name_indexes.sql
+```
+
 创建数据库并导入 schema/data：
 
 ```sql
@@ -233,13 +239,22 @@ orgid,c-org-name,org-name
 ...
 ```
 
-执行（路径按实际数据调整）：
+先从网站项目的行政区划常量生成通用城市编码映射：
+
+```bash
+node tools/extract_city_code_map.mjs \
+  /absolute/path/to/whois_website/src/main/resources/static/constant.js \
+  /absolute/path/to/city-codes.json
+```
+
+再执行转换（路径按实际数据调整）：
 
 ```bash
 python3 tools/convert_rsdb_cernic.py \
   --source-dir /absolute/path/to/rsdb \
   --review-workbook /absolute/path/to/org_duplicates.xlsx \
   --review-overrides /absolute/path/to/org_duplicates_overrides.csv \
+  --city-code-map /absolute/path/to/city-codes.json \
   --output-dir /absolute/path/to/cernic-import-output \
   --bootstrap-dump /absolute/path/to/myTEST.db
 ```
@@ -249,6 +264,7 @@ python3 tools/convert_rsdb_cernic.py \
 ```text
 /absolute/path/to/cernic-import-output/CERNIC-import-test.db
 /absolute/path/to/cernic-import-output/conversion-summary.md
+/absolute/path/to/cernic-import-output/organisation-city-codes.tsv
 ```
 
 转换规则：
@@ -256,15 +272,15 @@ python3 tools/convert_rsdb_cernic.py \
 - 所有对象的 `source` 统一为 `CERNIC`。
 - 旧 `person`、`role` 的 NIC-HDL 及全部 `admin-c`、`tech-c`、`zone-c` 引用统一改为 `-CER`；发生同名冲突时为后续对象分配可用数字。
 - `conn-i` 转为 `organisation` 主键；同一 `conn-i` 只保留一个 organisation。已核对的重复 ID 使用工作簿最终选择的 `org-name` 与 `c-org-name`。
-- organisation 汇总关联的 inetnum、inet6num、domain 信息：保留可用的中英文名称、历史名称、地区字段和 notify；不写入 `admin-c`、`tech-c` 或无法可靠推导的 `c-cityid`。
+- organisation 汇总关联的 inetnum、inet6num、domain 信息：保留可用的中英文名称、历史名称、地区字段和 notify；不写入 `admin-c`、`tech-c`。每个 organisation 必须写入 `c-cityid`：优先以旧 `c-city` 匹配网站行政区划表中的城市或区县编码，无法精确匹配时退回 `c-province` 的省级编码，仍无法匹配时写入 `000000`；逐条结果写入私有的 `organisation-city-codes.tsv`。
 - domain 保留旧 `netname`，并按唯一 `netname` 优先关联 inet/inet6 的 organisation，其次才使用唯一 `c-orgname`；两者均未匹配且 `c-province` 为 `新疆` 时关联到 `BJ000035`（赛尔网络有限公司）。已有 `netname` 匹配不会被新疆规则覆盖。无法唯一关联的 domain 会跳过，详情写入私有的 `skipped-domains.tsv`。
 - 旧数据中为零的联系人或 organisation 索引改为有效正数，所有引用同步更新。
 - 无法解析的旧联系人引用生成占位 `role`，避免对象引用断裂。
 - IPv4 CIDR 和区间先规范化；重复的 IPv4 记录按较新的 `changed` 值保留。
-- 导入维护者为 `CERNIC-DBM-MNT`；脚本写入其 MD5-PW 密码哈希，对应密码为 `20260805`。
+- 导入维护者为 `CERNIC-DBM-MNT`；脚本写入其 MD5-PW 密码哈希，实际密码仅在本地私有环境保存。
 - 转换前会校验核对工作簿；失败时只生成 `review-validation-errors.md`，不会生成可导入 dump。
 
-### 启动并通过 JMX 导入
+### 本机启动并通过 JMX 导入
 
 导入目标必须是已按上一节 schema/data 初始化、但没有 RPSL 业务对象的独立数据库。不要对已有生产数据或 `myTEST.db` 执行本操作。`loadDump` 只新增对象，不会清库；校验或加载失败时安全模式会回滚本次导入。
 
@@ -296,6 +312,42 @@ user.handle.suffix.config=CERNIC:CER
   -jar whois.jar
 ```
 
+本机联调可直接在项目目录运行。以下示例使用 `run-local/properties-cityid-test`，其数据库名、端口与生产配置隔离：
+
+```bash
+cd /absolute/path/to/whois/run-local
+/usr/bin/java \
+  -Dwhois \
+  -Djsse.enableSNIExtension=false \
+  -Dcom.sun.management.jmxremote \
+  -Dcom.sun.management.jmxremote.authenticate=false \
+  -Dcom.sun.management.jmxremote.ssl=false \
+  -Dcom.sun.management.jmxremote.port=1100 \
+  -Dcom.sun.management.jmxremote.rmi.port=1100 \
+  -Djava.rmi.server.hostname=127.0.0.1 \
+  -Xms1024m \
+  -Xmx8g \
+  -Dwhois.config=properties-cityid-test \
+  -Duser.timezone=UTC \
+  -Dhazelcast.config=hazelcast.xml \
+  -Dlog4j.configurationFile=file:log4j2.xml \
+  -jar ../whois-db/target/whois-db-1.0-SNAPSHOT.jar
+```
+
+本机启动网站，`WHOIS_URL_PREFIX` 必须指向上面 whois 的 REST 端口：
+
+```bash
+cd /absolute/path/to/whois_website
+mvn package -DskipTests
+WHOIS_URL_PREFIX=http://127.0.0.1:1081 \
+WHOIS_SOURCE=CERNIC \
+WHOIS_MNTNER=CERNIC-DBM-MNT \
+WHOIS_PASSWORD=<CERNIC-DBM-MNT密码> \
+/usr/bin/java -jar target/whois-website-1.0.0.jar --spring.profiles.active=local
+```
+
+本机地址：网站为 `http://127.0.0.1:8091/home`，WHOIS REST 为 `http://127.0.0.1:1081`，传统 WHOIS 查询端口为 `1044`。
+
 下载并调用 jmxterm：
 
 ```bash
@@ -312,6 +364,14 @@ bean net.ripe.db.whois:name=Bootstrap
 run loadDump cernic-import /absolute/path/to/CERNIC-import-test.db
 ```
 
+也可不进入交互界面，直接执行导入：
+
+```bash
+printf 'open 127.0.0.1:1100\nbean net.ripe.db.whois:name=Bootstrap\nrun loadDump cernic-import /absolute/path/to/CERNIC-import-test.db\nquit\n' \
+  | java --add-exports jdk.jconsole/sun.tools.jconsole=ALL-UNNAMED \
+      -jar /absolute/path/to/jmxterm-1.0.4-uber.jar -n
+```
+
 返回内容中应包含：
 
 ```text
@@ -325,7 +385,7 @@ FINISHED
 `<对象数量>` 取决于实际旧数据，不是示例数据的固定值。导入后可查询联系人和网段验证引用，例如：
 
 ```bash
-printf 'AA2-CER\r\n' | nc -w 8 127.0.0.1 <port.query>
+{ printf 'AA2-CER\r\n'; sleep 1; } | nc -w 8 127.0.0.1 <port.query>
 curl http://127.0.0.1:1080/whois/CERNIC/person/AA2-CER
 ```
 
