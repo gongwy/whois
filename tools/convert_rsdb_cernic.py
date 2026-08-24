@@ -297,7 +297,7 @@ def main(source, out, whois, review, overrides):
         netname_orgids = orgids_by_netname.get(one(obj, "netname").strip().casefold(), set())
         if len(netname_orgids) == 1:
             conversion_stats["domain_netname_matches"] += 1
-            return next(iter(netname_orgids))
+            return next(iter(netname_orgids)), "netname"
 
         chinese_name = one(obj, "c-orgname").strip()
         chinese_orgids = set(orgids_by_person_chinese_name.get(chinese_name, set()))
@@ -306,17 +306,29 @@ def main(source, out, whois, review, overrides):
             for orgid in orgids_by_chinese_name.get(chinese_name, set()))
         if len(chinese_orgids) == 1:
             conversion_stats["domain_c_orgname_matches"] += 1
-            return next(iter(chinese_orgids))
+            return next(iter(chinese_orgids)), "c-orgname"
 
         if one(obj, "c-province").strip() == "新疆":
             conversion_stats["domain_xinjiang_fallback_matches"] += 1
-            return normalized_org_id_map["BJ000035"]
+            return normalized_org_id_map["BJ000035"], "xinjiang-fallback"
 
         if netname_orgids or chinese_orgids:
             conversion_stats["domain_ambiguous_organisation_matches"] += 1
+            return None, "ambiguous organisation match"
         else:
             conversion_stats["domain_unmatched_organisations"] += 1
-        return None
+            return None, "no safe organisation match"
+
+    domain_assignments = {}
+    domains_by_org = defaultdict(list)
+    skipped_domains = []
+    for obj in domains:
+        org_id, reason = domain_organisation(obj)
+        domain_assignments[id(obj)] = org_id
+        if org_id:
+            domains_by_org[org_id].append(obj)
+        else:
+            skipped_domains.append((obj, reason))
 
     dump = []
     dump.extend([
@@ -345,36 +357,56 @@ def main(source, out, whois, review, overrides):
         add(lines, "fax-no", obj.get("fax-no", []))
         add(lines, "e-mail", obj.get("e-mail", []) or ([default_notify] if typ == "role" else []))
         add(lines, "abuse-mailbox", obj.get("trouble", []))
+        if typ == "role":
+            for key in ("admin-c", "tech-c"):
+                add(lines, key, [ref(value) for value in obj.get(key, [])])
         lines.append(f"nic-hdl: {handle_map[old]}")
         add(lines, "remarks", [f"legacy-changed: {value}" for value in obj.get("changed", [])])
         add(lines, "notify", obj.get("notify", []))
         lines += [f"mnt-by: {MNTNER}", f"source: {WHOIS_SOURCE}", ""]
         dump.extend(lines)
 
+    def most_common(values):
+        values = [value for value in values if value]
+        return Counter(values).most_common(1)[0][0] if values else ""
+
     for old, org_id in sorted(org_id_map.items()):
         related = org_resources.get(old, [])
-        names = [value for obj in related for value in obj.get("descr", [])]
-        admins = [ref(value) for obj in related for value in obj.get("admin-c", []) if ref(value) in primary or ref(value) in placeholders]
-        admin = Counter(admins).most_common(1)[0][0] if admins else fallback_handle
+        related_domains = domains_by_org.get(org_id, [])
         reviewed = reviewed_organisations.get(old.upper())
-        org_name = reviewed["org-name"] if reviewed else Counter(names).most_common(1)[0][0] if names else f"Legacy organisation {org_id}"
+        english_names = [value for obj in related for value in obj.get("descr", [])]
+        english_names.extend(one(obj, "orgname") for obj in related_domains)
+        chinese_names = [one(obj, "c-orgname") for obj in related_domains]
+        org_name = reviewed["org-name"] if reviewed else most_common(english_names) or f"Legacy organisation {org_id}"
+        c_org_name = reviewed["c-org-name"] if reviewed else most_common(chinese_names)
         lines = [f"organisation: {org_id}", f"org-name: {org_name}"]
-        if reviewed:
-            lines.append(f"c-org-name: {reviewed['c-org-name']}")
-            conversion_stats["reviewed_organisations"] += 1
-        lines += ["c-cityid: 110000", f"admin-c: {admin}", f"mnt-by: {MNTNER}", f"source: {WHOIS_SOURCE}", ""]
+        if c_org_name:
+            lines.append(f"c-org-name: {c_org_name}")
+        legacy_names = sorted(set(english_names) - {org_name})
+        add(lines, "descr", [f"legacy-org-name: {name}" for name in legacy_names])
+        legacy_chinese_names = sorted(set(chinese_names) - {c_org_name})
+        add(lines, "remarks", [f"legacy-c-org-name: {name}" for name in legacy_chinese_names])
+        for key in ("street", "c-street", "city", "c-city", "province", "c-province", "country"):
+            value = most_common([one(obj, key) for obj in related_domains])
+            if value:
+                lines.append(f"{key}: {value}")
+        add(lines, "notify", [value for obj in related + related_domains for value in obj.get("notify", [])])
+        lines += [f"mnt-by: {MNTNER}", f"source: {WHOIS_SOURCE}", ""]
         dump.extend(lines)
+        if reviewed:
+            conversion_stats["reviewed_organisations"] += 1
 
     def resource(obj, typ, primary_key, netname_required=False):
         primary_value = one(obj, primary_key)
         if typ == "inetnum":
             primary_value = canonical_inetnum(primary_value)
         lines = [f"{typ}: {primary_value}"]
-        if netname_required:
-            lines.append(f"netname: {one(obj, 'netname')}")
+        netname = one(obj, "netname")
+        if netname_required or (typ == "domain" and netname):
+            lines.append(f"netname: {netname}")
         org_id = org_id_map.get(one(obj, "conn-i"))
         if typ == "domain":
-            org_id = domain_organisation(obj)
+            org_id = domain_assignments[id(obj)]
         if org_id:
             lines.append(f"org: {org_id}")
         add(lines, "conn-p", obj.get("conn-p", []))
@@ -411,6 +443,8 @@ def main(source, out, whois, review, overrides):
     for obj in inet6:
         resource(obj, "inet6num", "*i6", True)
     for obj in domains:
+        if domain_assignments[id(obj)] is None:
+            continue
         resource(obj, "domain", "domain")
     for obj in hosts:
         lines = [f"nameserver: {one(obj, 'host')}"]
@@ -420,11 +454,16 @@ def main(source, out, whois, review, overrides):
         dump.extend(lines)
 
     (out / "CERNIC-import-test.db").write_text("\n".join(dump), encoding="utf-8")
+    with (out / "skipped-domains.tsv").open("w", encoding="utf-8", newline="") as file:
+        writer = csv.writer(file, delimiter="\t")
+        writer.writerow(["reason", "domain", "netname", "orgname", "c-orgname", "province", "c-province", "city", "c-city"])
+        for obj, reason in skipped_domains:
+            writer.writerow([reason] + [one(obj, key) for key in ("domain", "netname", "orgname", "c-orgname", "province", "c-province", "city", "c-city")])
     (out / "conversion-summary.md").write_text(
         "# Conversion summary\n\n"
         f"- Source is normalized to `{WHOIS_SOURCE}`.\n"
         "- All legacy contact handles and references are normalized to `-CER`.\n"
-        "- Reused `conn-i` values produce one organisation; reviewed organisation IDs with only domain references are also generated.\n"
+        "- Organisations merge legacy inetnum, inet6num and safely-associated domain details.\n"
         "- Legacy zero-valued contact and organisation indexes are reassigned to valid positive indexes; all generated references follow the reassignment.\n"
         "- Unresolved contact references receive placeholder role objects.\n"
         "- IPv4 CIDR and range representations are normalized before deduplication; conflicting records prefer the newest legacy changed value.\n"
@@ -435,6 +474,7 @@ def main(source, out, whois, review, overrides):
         f"- Domain organisation matches by Xinjiang fallback: {conversion_stats['domain_xinjiang_fallback_matches']}.\n"
         f"- Domains without a safe organisation match: {conversion_stats['domain_unmatched_organisations']}.\n"
         f"- Domains with ambiguous organisation matches: {conversion_stats['domain_ambiguous_organisation_matches']}.\n"
+        f"- Skipped domains: {len(skipped_domains)} (see `skipped-domains.tsv`).\n"
         f"- Generated organisations: {len(org_id_map)}.\n"
         f"- Generated placeholder roles: {len(placeholders)}.\n",
         encoding="utf-8")

@@ -151,7 +151,6 @@ public class DummifierNrtmTest {
                         "organisation:   FOO\n" +
                         "created:        2001-02-04T17:00:00Z\n" +
                         "last-modified:  2001-02-04T17:00:00Z\n" +
-                        "admin-c:        DUMY-RIPE\n" +
                         "abuse-c:        FOO\n" +
                         "country:        FOO\n" +
                         "mnt-by:         FOO\n" +
