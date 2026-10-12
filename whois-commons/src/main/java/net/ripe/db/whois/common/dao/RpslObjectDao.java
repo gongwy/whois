@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.Map;
 import java.util.LinkedHashMap;
+import java.time.LocalDate;
 
 // these should return Collection<> instead of List<> to allow for greater flexibility in implementation
 public interface RpslObjectDao extends ProxyLoader<Identifiable, RpslObject> {
@@ -59,4 +60,10 @@ public interface RpslObjectDao extends ProxyLoader<Identifiable, RpslObject> {
     Map<Integer, Integer> ips();
 
     Map<String, LinkedHashMap<Integer, Integer>> offlines();
+
+    /**
+     * Statistics for objects which currently exist in the database.  When a
+     * date boundary is supplied, registration-date is used for filtering.
+     */
+    Map<String, Object> resourceStatistics(LocalDate startDate, LocalDate endDate, boolean includeUndated);
 }

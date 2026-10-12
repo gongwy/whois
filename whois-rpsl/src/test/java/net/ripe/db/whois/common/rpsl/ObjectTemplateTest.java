@@ -226,6 +226,87 @@ public class ObjectTemplateTest {
     }
 
     @Test
+    public void registrationDateIsSupportedOnlyForResourceObjects() {
+        assertThat(ObjectTemplate.getTemplate(ObjectType.DOMAIN).getAllAttributes().contains(AttributeType.REGISTRATION_DATE), is(true));
+        assertThat(ObjectTemplate.getTemplate(ObjectType.INETNUM).getAllAttributes().contains(AttributeType.REGISTRATION_DATE), is(true));
+        assertThat(ObjectTemplate.getTemplate(ObjectType.INET6NUM).getAllAttributes().contains(AttributeType.REGISTRATION_DATE), is(true));
+        assertThat(ObjectTemplate.getTemplate(ObjectType.ORGANISATION).getAllAttributes().contains(AttributeType.REGISTRATION_DATE), is(false));
+        assertThat(ObjectTemplate.getTemplate(ObjectType.PERSON).getAllAttributes().contains(AttributeType.REGISTRATION_DATE), is(false));
+
+        assertThat(ObjectTemplate.getTemplate(ObjectType.DOMAIN).getMultipleAttributes().contains(AttributeType.REGISTRATION_DATE), is(false));
+        assertThat(ObjectTemplate.getTemplate(ObjectType.DOMAIN).getMandatoryAttributes().contains(AttributeType.REGISTRATION_DATE), is(false));
+        assertThat(ObjectTemplate.getTemplate(ObjectType.DOMAIN).getGeneratedAttributes().contains(AttributeType.REGISTRATION_DATE), is(false));
+    }
+
+    @Test
+    public void registrationDateValidatesInResourceObjectsAndRemainsOptional() {
+        assertObjectValid("" +
+                "domain: example.edu.cn\n" +
+                "netname: EXAMPLE\n" +
+                "registration-date: 2020-01-02\n" +
+                "admin-c: AA1-CER\n" +
+                "nserver: ns1.example.edu.cn\n" +
+                "mnt-by: CERNIC-DBM-MNT\n" +
+                "source: CERNIC");
+
+        assertObjectValid("" +
+                "inetnum: 192.0.2.0 - 192.0.2.255\n" +
+                "netname: EXAMPLE\n" +
+                "registration-date: 2021-03-04\n" +
+                "admin-c: AA1-CER\n" +
+                "mnt-by: CERNIC-DBM-MNT\n" +
+                "source: CERNIC");
+
+        assertObjectValid("" +
+                "inet6num: 2001:db8::/32\n" +
+                "netname: EXAMPLE\n" +
+                "registration-date: 2022-05-06\n" +
+                "admin-c: AA1-CER\n" +
+                "mnt-by: CERNIC-DBM-MNT\n" +
+                "source: CERNIC");
+
+        assertObjectValid("" +
+                "domain: no-date.edu.cn\n" +
+                "netname: NO-DATE\n" +
+                "admin-c: AA1-CER\n" +
+                "nserver: ns1.no-date.edu.cn\n" +
+                "mnt-by: CERNIC-DBM-MNT\n" +
+                "source: CERNIC");
+    }
+
+    @Test
+    public void registrationDateRejectsDuplicateAndInvalidValues() {
+        assertObjectInvalid("" +
+                "domain: duplicate-date.edu.cn\n" +
+                "netname: DUPLICATE-DATE\n" +
+                "registration-date: 2020-01-02\n" +
+                "registration-date: 2020-01-03\n" +
+                "admin-c: AA1-CER\n" +
+                "nserver: ns1.duplicate-date.edu.cn\n" +
+                "mnt-by: CERNIC-DBM-MNT\n" +
+                "source: CERNIC");
+
+        assertObjectInvalid("" +
+                "domain: invalid-date.edu.cn\n" +
+                "netname: INVALID-DATE\n" +
+                "registration-date: 2020/01/02\n" +
+                "admin-c: AA1-CER\n" +
+                "nserver: ns1.invalid-date.edu.cn\n" +
+                "mnt-by: CERNIC-DBM-MNT\n" +
+                "source: CERNIC");
+    }
+
+    private void assertObjectValid(final String objectText) {
+        final RpslObject object = RpslObject.parse(objectText);
+        assertThat(ObjectTemplate.getTemplate(object.getType()).validate(object).hasErrors(), is(false));
+    }
+
+    private void assertObjectInvalid(final String objectText) {
+        final RpslObject object = RpslObject.parse(objectText);
+        assertThat(ObjectTemplate.getTemplate(object.getType()).validate(object).hasErrors(), is(true));
+    }
+
+    @Test
     public void type_or_keys_occur_only_once() {
         for (final ObjectType objectType : ObjectType.values()) {
             final ObjectTemplate objectTemplate = ObjectTemplate.getTemplate(objectType);

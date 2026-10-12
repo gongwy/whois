@@ -9,6 +9,7 @@ import net.ripe.db.whois.common.dao.RpslObjectDao;
 import net.ripe.db.whois.common.dao.RpslObjectInfo;
 import net.ripe.db.whois.common.dao.jdbc.domain.RpslObjectInfoResultSetExtractor;
 import net.ripe.db.whois.common.dao.jdbc.domain.RpslObjectRowMapper;
+import net.ripe.db.whois.common.dao.jdbc.domain.ObjectTypeIds;
 import net.ripe.db.whois.common.dao.jdbc.index.IndexStrategies;
 import net.ripe.db.whois.common.dao.jdbc.index.IndexStrategy;
 import net.ripe.db.whois.common.domain.CIString;
@@ -58,6 +59,8 @@ import java.util.Map;
 import java.util.Set;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Locale;
 
 @Repository
 @Primary
@@ -420,4 +423,182 @@ public class JdbcRpslObjectDao implements RpslObjectDao {
             }
         });
     }
+
+    @Override
+    public Map<String, Object> resourceStatistics(final LocalDate startDate,
+                                                  final LocalDate endDate,
+                                                  final boolean includeUndated) {
+        final Map<Integer, String> cityIds = jdbcTemplate.query(
+                "SELECT d.object_id, o.city_id FROM domain d " +
+                        "LEFT JOIN organisation o ON d.org = o.organisation",
+                rs -> {
+                    final Map<Integer, String> result = new HashMap<>();
+                    while (rs.next()) {
+                        result.put(rs.getInt(1), rs.getString(2));
+                    }
+                    return result;
+                });
+
+        final Map<String, AddressFamilies> nameserverFamilies = loadNameserverFamilies();
+        final Map<String, Integer> domainsByProvince = new LinkedHashMap<>();
+        int domainCount = 0;
+        int undatedDomains = 0;
+        int domainsWithIpv4Nameserver = 0;
+        int domainsWithIpv6Nameserver = 0;
+        int domainsWithUnresolvedNameserver = 0;
+
+        for (final RpslObject domain : loadCurrentObjects(ObjectType.DOMAIN)) {
+            if (isInfrastructureDomain(domain.getKey().toString())) {
+                continue;
+            }
+            final LocalDate registrationDate = registrationDate(domain);
+            if (registrationDate == null) {
+                undatedDomains++;
+            }
+            if (!withinPeriod(registrationDate, startDate, endDate, includeUndated)) {
+                continue;
+            }
+
+            domainCount++;
+            final String cityId = cityIds.get(domain.getObjectId());
+            final String provinceCode = cityId == null || cityId.length() < 2 || cityId.startsWith("00")
+                    ? "unknown"
+                    : cityId.substring(0, 2);
+            domainsByProvince.merge(provinceCode, 1, Integer::sum);
+
+            boolean hasIpv4 = false;
+            boolean hasIpv6 = false;
+            boolean unresolved = false;
+            for (final RpslAttribute nserver : domain.findAttributes(AttributeType.NSERVER)) {
+                final String host = firstToken(nserver.getCleanValue().toString()).toLowerCase(Locale.ROOT);
+                final AddressFamilies families = nameserverFamilies.get(host);
+                if (families == null) {
+                    unresolved = true;
+                    continue;
+                }
+                hasIpv4 |= families.ipv4;
+                hasIpv6 |= families.ipv6;
+            }
+            if (hasIpv4) {
+                domainsWithIpv4Nameserver++;
+            }
+            if (hasIpv6) {
+                domainsWithIpv6Nameserver++;
+            }
+            if (unresolved && !hasIpv4 && !hasIpv6) {
+                domainsWithUnresolvedNameserver++;
+            }
+        }
+
+        final CountResult ipv4 = countAllocations(ObjectType.INETNUM, startDate, endDate, includeUndated);
+        final CountResult ipv6 = countAllocations(ObjectType.INET6NUM, startDate, endDate, includeUndated);
+
+        final Map<String, Object> period = new LinkedHashMap<>();
+        period.put("startDate", startDate == null ? null : startDate.toString());
+        period.put("endDate", endDate == null ? null : endDate.toString());
+        period.put("dateField", "registration-date");
+        period.put("includeUndated", includeUndated);
+
+        final Map<String, Object> domains = new LinkedHashMap<>();
+        domains.put("total", domainCount);
+        domains.put("undated", undatedDomains);
+        domains.put("byProvince", domainsByProvince);
+
+        final Map<String, Object> ipAllocations = new LinkedHashMap<>();
+        ipAllocations.put("total", ipv4.included + ipv6.included);
+        ipAllocations.put("ipv4", ipv4.included);
+        ipAllocations.put("ipv6", ipv6.included);
+        ipAllocations.put("undated", ipv4.undated + ipv6.undated);
+
+        final Map<String, Object> nameserverCoverage = new LinkedHashMap<>();
+        nameserverCoverage.put("domainsWithIpv4Nameserver", domainsWithIpv4Nameserver);
+        nameserverCoverage.put("domainsWithIpv6Nameserver", domainsWithIpv6Nameserver);
+        nameserverCoverage.put("domainsWithUnresolvedNameserver", domainsWithUnresolvedNameserver);
+
+        final Map<String, Object> result = new LinkedHashMap<>();
+        result.put("period", period);
+        result.put("domains", domains);
+        result.put("ipAllocations", ipAllocations);
+        result.put("nameserverCoverage", nameserverCoverage);
+        result.put("generatedAt", java.time.OffsetDateTime.now().toString());
+        return result;
+    }
+
+    private List<RpslObject> loadCurrentObjects(final ObjectType objectType) {
+        return jdbcTemplate.query(
+                "SELECT object_id, object FROM last WHERE sequence_id != 0 AND object_type = ?",
+                new RpslObjectRowMapper(), ObjectTypeIds.getId(objectType));
+    }
+
+    private Map<String, AddressFamilies> loadNameserverFamilies() {
+        final Map<String, AddressFamilies> result = new HashMap<>();
+        for (final RpslObject nameserver : loadCurrentObjects(ObjectType.NAMESERVER)) {
+            final AddressFamilies families = new AddressFamilies();
+            for (final RpslAttribute ipnum : nameserver.findAttributes(AttributeType.IPNUM)) {
+                final String value = ipnum.getCleanValue().toString();
+                families.ipv4 |= value.contains(".");
+                families.ipv6 |= value.contains(":");
+            }
+            result.put(nameserver.getKey().toString().toLowerCase(Locale.ROOT), families);
+        }
+        return result;
+    }
+
+    private CountResult countAllocations(final ObjectType objectType,
+                                         final LocalDate startDate,
+                                         final LocalDate endDate,
+                                         final boolean includeUndated) {
+        int included = 0;
+        int undated = 0;
+        for (final RpslObject object : loadCurrentObjects(objectType)) {
+            final LocalDate registrationDate = registrationDate(object);
+            if (registrationDate == null) {
+                undated++;
+            }
+            if (withinPeriod(registrationDate, startDate, endDate, includeUndated)) {
+                included++;
+            }
+        }
+        return new CountResult(included, undated);
+    }
+
+    static boolean withinPeriod(final LocalDate value,
+                                final LocalDate startDate,
+                                final LocalDate endDate,
+                                final boolean includeUndated) {
+        if (value == null) {
+            return includeUndated;
+        }
+        return (startDate == null || !value.isBefore(startDate))
+                && (endDate == null || !value.isAfter(endDate));
+    }
+
+    private static LocalDate registrationDate(final RpslObject object) {
+        final List<RpslAttribute> attributes = object.findAttributes(AttributeType.REGISTRATION_DATE);
+        if (attributes.isEmpty()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(attributes.get(0).getCleanValue().toString());
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static boolean isInfrastructureDomain(final String domain) {
+        final String normalized = domain.toLowerCase(Locale.ROOT);
+        return normalized.equals("in-addr.arpa") || normalized.equals("ip6.arpa") || normalized.equals("e164.arpa");
+    }
+
+    private static String firstToken(final String value) {
+        final int separator = value.indexOf(' ');
+        return separator < 0 ? value : value.substring(0, separator);
+    }
+
+    private static final class AddressFamilies {
+        private boolean ipv4;
+        private boolean ipv6;
+    }
+
+    private record CountResult(int included, int undated) {}
 }

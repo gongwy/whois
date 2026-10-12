@@ -44,7 +44,10 @@ import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Map;
 
 import static net.ripe.db.whois.api.rest.RestServiceHelper.getServerAttributeMapper;
 import static net.ripe.db.whois.api.rest.RestServiceHelper.isQueryParamSet;
@@ -375,6 +378,43 @@ public class WhoisRestService {
         }
 
         return Response.ok(rpslObjectDao.offlines()).build();
+    }
+
+    /**
+     * Statistics for resources which currently exist.  Supplying either date
+     * boundary switches to registration-date filtering; undated legacy data is
+     * kept only in the default all-current view.
+     */
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/{source}/statistics/resources")
+    public Response resourceStatistics(
+            @Context final HttpServletRequest request,
+            @PathParam("source") final String source,
+            @QueryParam("start-date") final String startDateValue,
+            @QueryParam("end-date") final String endDateValue) {
+
+        if (!isValidSource(source)) {
+            throw new WebApplicationException(Response.status(Response.Status.BAD_REQUEST)
+                    .entity(RestServiceHelper.createErrorEntity(request, RestMessages.invalidSource(source)))
+                    .build());
+        }
+
+        try {
+            final LocalDate startDate = StringUtils.isBlank(startDateValue) ? null : LocalDate.parse(startDateValue);
+            final LocalDate endDate = StringUtils.isBlank(endDateValue) ? LocalDate.now() : LocalDate.parse(endDateValue);
+            if (startDate != null && startDate.isAfter(endDate)) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("message", "start-date must not be after end-date"))
+                        .build();
+            }
+            final boolean includeUndated = StringUtils.isBlank(startDateValue) && StringUtils.isBlank(endDateValue);
+            return Response.ok(rpslObjectDao.resourceStatistics(startDate, endDate, includeUndated)).build();
+        } catch (DateTimeParseException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("message", "Dates must use YYYY-MM-DD format"))
+                    .build();
+        }
     }
 
     private boolean requiresNonAuthRedirect(final String source, final String objectType, final String key) {

@@ -85,6 +85,7 @@ import static net.ripe.db.whois.common.rpsl.AttributeSyntax.ROUTE6_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.ROUTE_SET_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.ROUTE_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.RTR_SET_SYNTAX;
+import static net.ripe.db.whois.common.rpsl.AttributeSyntax.REGISTRATION_DATE_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.SOURCE_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.STATUS_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeValueType.LIST_VALUE;
@@ -659,6 +660,12 @@ public enum AttributeType implements Documented {
                     "or removed. This attribute is filtered from the default whois output when at least one of the " +
                     "objects returned by the query contains an abuse-mailbox attribute.")
             .syntax(EMAIL_SYNTAX)),
+
+    REGISTRATION_DATE(new Builder("registration-date", "rd")
+            .doc("Specifies the date on which a domain was registered or an IP resource was registered or allocated. " +
+                    "This is distinct from the generated created attribute, which records when the object was added to the database. " +
+                    "The value uses ISO 8601 calendar-date format (yyyy-MM-dd).")
+            .syntax(REGISTRATION_DATE_SYNTAX)),
 
     REMARKS(new Builder("remarks", "rm")
             .doc("Contains remarks.")

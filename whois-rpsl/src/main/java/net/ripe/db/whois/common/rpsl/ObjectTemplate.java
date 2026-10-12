@@ -145,6 +145,7 @@ import static net.ripe.db.whois.common.rpsl.AttributeType.POETIC_FORM;
 import static net.ripe.db.whois.common.rpsl.AttributeType.POSTALCODE;
 import static net.ripe.db.whois.common.rpsl.AttributeType.PROVINCE;
 import static net.ripe.db.whois.common.rpsl.AttributeType.REF_NFY;
+import static net.ripe.db.whois.common.rpsl.AttributeType.REGISTRATION_DATE;
 import static net.ripe.db.whois.common.rpsl.AttributeType.REMARKS;
 import static net.ripe.db.whois.common.rpsl.AttributeType.ROLE;
 import static net.ripe.db.whois.common.rpsl.AttributeType.ROUTE;
@@ -225,6 +226,7 @@ public final class ObjectTemplate implements Comparable<ObjectTemplate> {
                 new ObjectTemplate(ObjectType.DOMAIN, 30,
                         new AttributeTemplate(DOMAIN, MANDATORY, SINGLE, PRIMARY_KEY, LOOKUP_KEY),
                         new AttributeTemplate(NETNAME, OPTIONAL, SINGLE, LOOKUP_KEY),
+                        new AttributeTemplate(REGISTRATION_DATE, OPTIONAL, SINGLE),
                         new AttributeTemplate(DESCR, OPTIONAL, MULTIPLE),
                         new AttributeTemplate(ORG, OPTIONAL, MULTIPLE, INVERSE_KEY),
                         new AttributeTemplate(ADMIN_C, MANDATORY, MULTIPLE, INVERSE_KEY),
@@ -278,6 +280,7 @@ public final class ObjectTemplate implements Comparable<ObjectTemplate> {
                 new ObjectTemplate(ObjectType.INET6NUM, 6,
                         new AttributeTemplate(INET6NUM, MANDATORY, SINGLE, PRIMARY_KEY, LOOKUP_KEY),
                         new AttributeTemplate(NETNAME, MANDATORY, SINGLE, LOOKUP_KEY),
+                        new AttributeTemplate(REGISTRATION_DATE, OPTIONAL, SINGLE),
                         new AttributeTemplate(ORG, OPTIONAL, SINGLE, INVERSE_KEY),
                         new AttributeTemplate(CONN_P, OPTIONAL, SINGLE, LOOKUP_KEY),
                         new AttributeTemplate(DESCR, OPTIONAL, MULTIPLE),
@@ -305,6 +308,7 @@ public final class ObjectTemplate implements Comparable<ObjectTemplate> {
                 new ObjectTemplate(ObjectType.INETNUM, 5,
                         new AttributeTemplate(INETNUM, MANDATORY, SINGLE, PRIMARY_KEY, LOOKUP_KEY),
                         new AttributeTemplate(NETNAME, MANDATORY, SINGLE, LOOKUP_KEY),
+                        new AttributeTemplate(REGISTRATION_DATE, OPTIONAL, SINGLE),
                         new AttributeTemplate(ORG, OPTIONAL, SINGLE, INVERSE_KEY),
                         new AttributeTemplate(CONN_P, OPTIONAL, SINGLE, LOOKUP_KEY),
                         new AttributeTemplate(DESCR, OPTIONAL, MULTIPLE),

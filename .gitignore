@@ -17,3 +17,8 @@ pom.xml.*Backup
 logs
 *-local.properties
 whois-db/dependency-reduced-pom.xml
+
+# Local migration artifacts and runnable service state. These may contain
+# imported WHOIS or filing data and must never be committed.
+/outputs/
+/run-local/

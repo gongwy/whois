@@ -132,6 +132,7 @@ public final class IndexStrategies {
                 new IndexWithValue(AttributeType.POEM, "poem", "poem"),
                 new IndexWithValue(AttributeType.POETIC_FORM, "poetic_form", "poetic_form"),
                 new IndexWithValue(AttributeType.REF_NFY, "ref_nfy", "ref_nfy"),
+                new Unindexed(AttributeType.REGISTRATION_DATE),
                 new Unindexed(AttributeType.REMARKS),
                 new IndexWithNameAndType(AttributeType.ROLE, ObjectType.ROLE, "names"),
                 new IndexWithRoute(AttributeType.ROUTE),

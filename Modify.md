@@ -217,9 +217,75 @@ telnet localhost 1043
 
 ## 旧数据转换与导入
 
+### 当前统一迁移入口（旧 WHOIS 预处理 + 完整数据物化）
+
+`tools/build_complete_whois_migration.py` 是当前规则的统一入口。它按顺序完成：
+
+1. 从旧 IPv4/IPv6 的 `conn-i` 和前两条 `descr` 提取机构名称候选，并生成冲突核对表；
+2. 以 `netname` 优先、`c-orgname` 次之关联旧域名；零匹配和多候选均不强制关联真实机构；
+3. 按 ICP、域名备案、非“预留”IP 备案的顺序，用法人名称解决同一 `conn-i` 的多名称问题；
+4. 405 个唯一命中的 `conn-i` 使用核对结果；剩余 50 个不再阻断，按旧 IP 对象中名称出现频次最高者回退，并在 `organisation-name-decisions.tsv` 中完整记录；
+5. 物化 organisation、person、role、inetnum、inet6num、domain、nameserver 和维护者对象；
+6. 无法唯一关联真实机构的域名写入带 `migration-cleanup: unresolved-domain` 标记的 `FK` 机构，且生成按依赖顺序删除的清单；
+7. 保留旧 domain、inetnum、inet6num 主键的源文本；规范化值只用于匹配和逻辑重复检测；
+8. 运行引用、主键、来源、资源保留和 Java RPSL 解析回归检查。
+
+示例：
+
+```bash
+python3 tools/build_complete_whois_migration.py \
+  --rsdb-dir /absolute/path/to/rsdb \
+  --icp-workbook /absolute/path/to/icp备案数据.xlsx \
+  --domain-workbook /absolute/path/to/2026-09-21_full.xlsx \
+  --ip-workbook /absolute/path/to/IPFP.xlsx \
+  --filing-exclusions /absolute/path/to/迁移排除记录.tsv \
+  --output-dir /absolute/path/to/new-empty-output
+```
+
+最终可导入文件为 `import/CERNIC-import.db`。只有
+`complete-migration-report.md` 与 `import/validation-report.md` 都显示 `passed`
+时才允许进入 `Bootstrap.loadDump`。
+
 旧系统数据转换脚本为 `tools/convert_rsdb_cernic.py`。脚本不会修改原始数据；输出目录默认为脚本旁的 `rsdb-cernic-import-test/`，其中包含导入文件和转换摘要。输出文件含业务数据，不应提交到 Git 或上传到公共位置。
 
 ### 转换旧数据
+
+推荐使用统一入口脚本。它会检查六个旧数据文件、自动从网站常量生成城市编码、调用转换器、检查主键重复及联系人/机构悬空引用，并生成机器可读和人工可读的验收报告：
+
+```bash
+python3 tools/prepare_rsdb_import.py /absolute/path/to/new-rsdb \
+  --output-dir /absolute/path/to/cernic-import-output \
+  --mode safe \
+  --review-workbook /absolute/path/to/org_duplicates.xlsx
+```
+
+`safe` 模式仅用于阶段性联调，会跳过核对表中有争议的机构及其关联资源，不作为最终导入数据。最终导入使用 `complete` 模式：机构名称存在冲突也不会跳过，而是采用核对结果中的主名称，并按需提供覆盖 CSV：
+
+```bash
+python3 tools/prepare_rsdb_import.py /absolute/path/to/new-rsdb \
+  --output-dir /absolute/path/to/cernic-import-complete \
+  --mode complete \
+  --review-workbook /absolute/path/to/org_duplicates.xlsx \
+  --review-overrides /absolute/path/to/org_duplicates_overrides.csv
+```
+
+输出目录必须为空，以避免把两次转换结果混在一起。转换成功后除导入文件和原有摘要外，还会生成：
+
+```text
+validation-report.md
+validation-report.json
+organisation-conflicts.tsv
+fake-organisation-domains.tsv
+fake-organisation-cleanup.tsv
+```
+
+`organisation-conflicts.tsv` 由 `complete` 模式生成，逐个列出发生名称冲突的旧机构 ID、转换后的机构 ID、最终选择的中英文名称、全部候选名称，以及关联 IPv4、IPv6、域名数量。该报告仅用于复核，不会从导入 dump 中排除这些机构或资源。
+
+`complete` 模式不会跳过无法唯一关联机构的域名。脚本按旧 `c-orgname`、`orgname` 组合分组；缺少名称时按 `netname` 分组，仍缺少时才按单个域名分组，并为每组建立 `FK000001` 形式的临时机构。临时机构统一使用 `FAKE MIGRATION ORGANISATION` 名称和 `migration-cleanup: unresolved-domain` 标记。`fake-organisation-domains.tsv` 保存域名与临时机构的对应关系；`fake-organisation-cleanup.tsv` 按“先 domain、后 organisation”的依赖顺序列出待删除对象，便于后续批量清理。
+
+统一入口默认使用 `complete` 模式；只有显式传入 `--mode safe` 时才会跳过争议机构。
+
+只有终端出现 `PASS` 且报告的 `Status` 为 `passed`，该 dump 才进入后续独立数据库导入测试。核对表仍是必要的业务输入：新 rsdb 若出现核对表之外的新机构冲突，需要先更新核对表；脚本不会擅自替用户选择机构名称。
 
 准备旧数据目录、重复 organisation 核对工作簿和一个空输出目录。旧数据目录中应包含以下文件：
 
@@ -259,6 +325,17 @@ python3 tools/convert_rsdb_cernic.py \
   --bootstrap-dump /absolute/path/to/myTEST.db
 ```
 
+如重复 organisation 尚未核对完成，可先生成保守的第一批导入文件：它以 `核对结果` 页的全部 ID 作为待处理集合，不读取 C 列的选择结果，并排除这些 organisation 及其关联的 inetnum、inet6num 和 domain。联系人、主机和其余无争议 organisation 会继续导出。该批次适合先在独立的测试数据库中联调；后续完成核对后，应在新的空目标库重新生成并导入完整文件，不能把完整文件直接叠加到这批导入库。
+
+```bash
+python3 tools/convert_rsdb_cernic.py \
+  --source-dir /absolute/path/to/rsdb \
+  --review-workbook /absolute/path/to/org_duplicates.xlsx \
+  --city-code-map /absolute/path/to/city-codes.json \
+  --skip-reviewed-organisations \
+  --output-dir /absolute/path/to/cernic-import-safe
+```
+
 生成：
 
 ```text
@@ -272,11 +349,11 @@ python3 tools/convert_rsdb_cernic.py \
 - 所有对象的 `source` 统一为 `CERNIC`。
 - 旧 `person`、`role` 的 NIC-HDL 及全部 `admin-c`、`tech-c`、`zone-c` 引用统一改为 `-CER`；发生同名冲突时为后续对象分配可用数字。
 - `conn-i` 转为 `organisation` 主键；同一 `conn-i` 只保留一个 organisation。已核对的重复 ID 使用工作簿最终选择的 `org-name` 与 `c-org-name`。
-- organisation 汇总关联的 inetnum、inet6num、domain 信息：保留可用的中英文名称、历史名称、地区字段和 notify；不写入 `admin-c`、`tech-c`。每个 organisation 必须写入 `c-cityid`：优先以旧 `c-city` 匹配网站行政区划表中的城市或区县编码，无法精确匹配时退回 `c-province` 的省级编码，仍无法匹配时写入 `000000`；逐条结果写入私有的 `organisation-city-codes.tsv`。
-- domain 保留旧 `netname`，并按唯一 `netname` 优先关联 inet/inet6 的 organisation，其次才使用唯一 `c-orgname`；两者均未匹配且 `c-province` 为 `新疆` 时关联到 `BJ000035`（赛尔网络有限公司）。已有 `netname` 匹配不会被新疆规则覆盖。无法唯一关联的 domain 会跳过，详情写入私有的 `skipped-domains.tsv`。
+- organisation 汇总关联的 inetnum、inet6num、domain 信息：保留可用的中英文名称、历史名称、地区字段和 notify；统一入口不写 `tech-c`，仅把非“预留”IP 备案中能够唯一确定的紧急联系人写入 `admin-c`。直接调用旧转换器且未提供预处理报告时，仍沿用不写 organisation 联系人的兼容行为。每个 organisation 必须写入 `c-cityid`：优先以旧 `c-city` 匹配网站行政区划表中的城市或区县编码，无法精确匹配时退回 `c-province` 的省级编码，仍无法匹配时写入 `000000`；逐条结果写入私有的 `organisation-city-codes.tsv`。
+- domain 保留旧主键和 `netname`。统一入口直接采用预处理阶段的唯一匹配结果；零匹配和多候选均生成带统一清理标记的 `FK` 临时 organisation，不再使用地区兜底或强绑真实机构。只有直接调用旧转换器且未提供预处理报告时，才保留历史的新疆地区兜底兼容逻辑。
 - 旧数据中为零的联系人或 organisation 索引改为有效正数，所有引用同步更新。
 - 无法解析的旧联系人引用生成占位 `role`，避免对象引用断裂。
-- IPv4 CIDR 和区间先规范化；重复的 IPv4 记录按较新的 `changed` 值保留。
+- IPv4 CIDR 和区间仅用于匹配及逻辑重复检测，最终主键保留所选旧记录的原始文本；逻辑重复记录按较新的 `changed` 值保留，并逐条写入 `deduplicated-ipv4-resources.tsv`。
 - 导入维护者为 `CERNIC-DBM-MNT`；脚本写入其 MD5-PW 密码哈希，实际密码仅在本地私有环境保存。
 - 转换前会校验核对工作簿；失败时只生成 `review-validation-errors.md`，不会生成可导入 dump。
 

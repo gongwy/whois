@@ -198,6 +198,20 @@ public class AttributeSyntaxTest {
     }
 
     @Test
+    public void registrationDate() {
+        verifySuccess(ObjectType.DOMAIN, AttributeType.REGISTRATION_DATE, "2026-10-10");
+        verifySuccess(ObjectType.INETNUM, AttributeType.REGISTRATION_DATE, "1994-01-01");
+        verifySuccess(ObjectType.INET6NUM, AttributeType.REGISTRATION_DATE, "2020-12-31");
+
+        verifyFailure(ObjectType.DOMAIN, AttributeType.REGISTRATION_DATE, "");
+        verifyFailure(ObjectType.DOMAIN, AttributeType.REGISTRATION_DATE, "20261010");
+        verifyFailure(ObjectType.DOMAIN, AttributeType.REGISTRATION_DATE, "2026/10/10");
+        verifyFailure(ObjectType.DOMAIN, AttributeType.REGISTRATION_DATE, "2026-13-01");
+        verifyFailure(ObjectType.DOMAIN, AttributeType.REGISTRATION_DATE, "2026-02-30");
+        verifyFailure(ObjectType.DOMAIN, AttributeType.REGISTRATION_DATE, "2026-10-10T00:00:00Z");
+    }
+
+    @Test
     public void domain() {
         verifyFailure(ObjectType.DOMAIN, AttributeType.DOMAIN, "-core.swip.net");
         verifyFailure(ObjectType.DOMAIN, AttributeType.DOMAIN, "icm-$-london-1.icp.net");

@@ -9,9 +9,20 @@ import org.junit.jupiter.api.Test;
 import java.util.Set;
 
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 public class IndexStrategiesTest {
+    @Test
+    public void check_index_strategy_exists_for_every_template_attribute() {
+        for (final ObjectType objectType : ObjectType.values()) {
+            for (final AttributeType attributeType : ObjectTemplate.getTemplate(objectType).getAllAttributes()) {
+                assertThat(objectType.getName() + ":" + attributeType.getName(),
+                        IndexStrategies.get(attributeType), notNullValue());
+            }
+        }
+    }
+
     @Test
     public void check_index_strategied_for_lookup_attributes() {
 
