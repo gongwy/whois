@@ -16,6 +16,7 @@ import net.ripe.db.whois.api.rest.domain.WhoisResources;
 import net.ripe.db.whois.api.rest.mapper.FormattedServerAttributeMapper;
 import net.ripe.db.whois.api.rest.mapper.WhoisObjectMapper;
 import net.ripe.db.whois.api.rest.marshal.StreamingHelper;
+import net.ripe.db.whois.api.security.OrganisationAccessPolicy;
 import net.ripe.db.whois.common.Message;
 import net.ripe.db.whois.common.Messages;
 import net.ripe.db.whois.common.dao.RpslObjectDao;
@@ -100,6 +101,7 @@ public class ReferencesService {
     private final SsoTranslator ssoTranslator;
     private final LoggerContext loggerContext;
     private final WhoisObjectMapper whoisObjectMapper;
+    private final OrganisationAccessPolicy organisationAccessPolicy;
     private final Map dummyMap;
     private final String dummyRole;
     @Autowired
@@ -111,6 +113,7 @@ public class ReferencesService {
             final SsoTranslator ssoTranslator,
             final LoggerContext loggerContext,
             final WhoisObjectMapper whoisObjectMapper,
+            final OrganisationAccessPolicy organisationAccessPolicy,
             final @Value("#{${whois.dummy}}") Map<String, String> dummyMap) {
 
         this.rpslObjectDao = rpslObjectDao;
@@ -120,6 +123,7 @@ public class ReferencesService {
         this.ssoTranslator = ssoTranslator;
         this.loggerContext = loggerContext;
         this.whoisObjectMapper = whoisObjectMapper;
+        this.organisationAccessPolicy = organisationAccessPolicy;
         this.dummyMap = dummyMap;
         this.dummyRole = dummyMap.get(AttributeType.ADMIN_C.toString());
     }
@@ -135,25 +139,35 @@ public class ReferencesService {
     @Produces({MediaType.APPLICATION_XML, MediaType.APPLICATION_JSON})
     @Path("/{source}/{objectType}/{key:.*}")
     public Reference lookup(
+            @Context final HttpServletRequest request,
             @PathParam("source") final String sourceParam,
             @PathParam("objectType") final String objectTypeParam,
             @PathParam("key") final String keyParam) {
 
+        final ObjectType objectType = ObjectType.getByName(objectTypeParam);
+        if (!organisationAccessPolicy.mayRead(request, objectType)) {
+            throw new WebApplicationException(Response.status(Response.Status.NOT_FOUND).build());
+        }
+
+        final boolean includeOrganisations = organisationAccessPolicy.isAuthorised(request);
         final Reference result = new Reference(keyParam, objectTypeParam);
-        populateIncomingReferences(result);
+        populateIncomingReferences(result, includeOrganisations);
 
         for (final Reference reference : result.getIncoming()) {
-            populateIncomingReferences(reference);
+            populateIncomingReferences(reference, includeOrganisations);
         }
 
         return result;
     }
 
-    private void populateIncomingReferences(final Reference reference) {
+    private void populateIncomingReferences(final Reference reference, final boolean includeOrganisations) {
         final RpslObject primaryObject = lookupObjectByKey(reference.getPrimaryKey(), reference.getObjectType());
 
         for (final Map.Entry<RpslObjectInfo, RpslObject> entry : findReferences(primaryObject).entrySet()) {
             final RpslObject referenceObject = entry.getValue();
+            if (!includeOrganisations && referenceObject.getType() == ObjectType.ORGANISATION) {
+                continue;
+            }
             final Reference referenceToReference = new Reference(referenceObject.getKey().toString(), referenceObject.getType().getName());
             reference.getIncoming().add(referenceToReference);
         }

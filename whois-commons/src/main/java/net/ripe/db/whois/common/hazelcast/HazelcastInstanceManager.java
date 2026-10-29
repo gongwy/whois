@@ -32,14 +32,21 @@ public class HazelcastInstanceManager {
 
     final String interfaces;
     final int port;
+    final String clusterName;
+    final String bindInterface;
 
     private HazelcastInstance hazelcastInstance = null;
     private CacheManager cacheManager = null;
 
     @Autowired
-    public HazelcastInstanceManager(@Value("${hazelcast.config.interfaces:localhost}") final String interfaces, @Value("${hazelcast.port:5701}") final int port) {
+    public HazelcastInstanceManager(@Value("${hazelcast.config.interfaces:localhost}") final String interfaces,
+                                    @Value("${hazelcast.port:5701}") final int port,
+                                    @Value("${hazelcast.cluster.name:dev}") final String clusterName,
+                                    @Value("${hazelcast.bind.interface:}") final String bindInterface) {
         this.interfaces = interfaces;
         this.port = port;
+        this.clusterName = clusterName;
+        this.bindInterface = bindInterface;
     }
 
     @Bean
@@ -49,12 +56,16 @@ public class HazelcastInstanceManager {
             LOGGER.info("Creating hazelcast instance with Ripe deployed profile");
 
             final Config config = getGenericConfig();
+            config.setClusterName(clusterName);
             //We define ipv6 addresses
             config.setProperty("hazelcast.prefer.ipv4.stack", "false");
 
             config.getNetworkConfig().getJoin().getAwsConfig().setEnabled(false);
             config.getNetworkConfig().setPort(port).setPortAutoIncrement(false);
             config.getNetworkConfig().getJoin().getTcpIpConfig().setMembers(Arrays.asList(interfaces.split(","))).setEnabled(true);
+            if (!bindInterface.isBlank()) {
+                config.getNetworkConfig().getInterfaces().setEnabled(true).addInterface(bindInterface);
+            }
 
             final EvictionConfig evictionConfig = new EvictionConfig()
                 .setSize(10_000)

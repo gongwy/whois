@@ -51,7 +51,8 @@ public class ElasticAutocompleteSearch implements AutocompleteSearch {
         final String queryString,                       // search value
         final Set<AttributeType> queryAttributes,       // attribute(s) to search in
         final Set<AttributeType> responseAttributes,    // attribute(s) to return
-        final Set<ObjectType> objectTypes)              // filter by object type(s)
+        final Set<ObjectType> objectTypes,              // filter by object type(s)
+        final boolean includeOrganisation)
             throws IOException {                        // TODO: wrap IOException, return something sensible
 
 
@@ -63,6 +64,10 @@ public class ElasticAutocompleteSearch implements AutocompleteSearch {
         if(!objectTypes.isEmpty()) {
             final TermsQueryBuilder  matchByObjectTypeQuery = new TermsQueryBuilder("object-type", objectTypes.stream().map((objectType) -> objectType.getName()).toArray(String[]::new));
             finalQuery.must(matchByObjectTypeQuery);
+        }
+
+        if (!includeOrganisation) {
+            finalQuery.mustNot(QueryBuilders.termQuery(OBJECT_TYPE_FIELD_NAME + ".raw", ObjectType.ORGANISATION.getName()));
         }
 
         finalQuery.must(multiMatchQuery);

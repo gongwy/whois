@@ -27,6 +27,7 @@ public final class QueryServer implements ApplicationService {
     private int port;
 
     @Value("${port.query:0}") private int queryPort;
+    @Value("${port.query.host:}") private String queryHost;
     @Value("${loadbalancer.query.timeout:5000}") private int markNodeFailedTimeout;
 
     private Channel serverChannel;
@@ -59,7 +60,8 @@ public final class QueryServer implements ApplicationService {
             .childOption(ChannelOption.SO_KEEPALIVE, true);
 
         try {
-            ChannelFuture channelFuture = bootstrap.bind(new InetSocketAddress(queryPort)).sync();
+            ChannelFuture channelFuture = bootstrap.bind(
+                    queryHost.isBlank() ? new InetSocketAddress(queryPort) : new InetSocketAddress(queryHost, queryPort)).sync();
             port = ((InetSocketAddress)channelFuture.channel().localAddress()).getPort();
             LOGGER.info("Query server listening on {}", port);
         } catch (InterruptedException e) {

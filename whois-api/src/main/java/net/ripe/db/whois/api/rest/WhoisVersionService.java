@@ -10,6 +10,7 @@ import net.ripe.db.whois.api.rest.domain.WhoisVersions;
 import net.ripe.db.whois.api.rest.mapper.FormattedServerAttributeMapper;
 import net.ripe.db.whois.api.rest.mapper.WhoisObjectMapper;
 import net.ripe.db.whois.api.rest.mapper.WhoisObjectServerMapper;
+import net.ripe.db.whois.api.security.OrganisationAccessPolicy;
 import net.ripe.db.whois.common.Message;
 import net.ripe.db.whois.common.Messages;
 import net.ripe.db.whois.common.domain.ResponseObject;
@@ -47,6 +48,7 @@ public class WhoisVersionService {
     private final SourceContext sourceContext;
     private final WhoisObjectMapper whoisObjectMapper;
     private final WhoisObjectServerMapper whoisObjectServerMapper;
+    private final OrganisationAccessPolicy organisationAccessPolicy;
 
     @Autowired
     public WhoisVersionService(
@@ -54,12 +56,14 @@ public class WhoisVersionService {
             final QueryHandler queryHandler,
             final SourceContext sourceContext,
             final WhoisObjectMapper whoisObjectMapper,
-            final WhoisObjectServerMapper whoisObjectServerMapper) {
+            final WhoisObjectServerMapper whoisObjectServerMapper,
+            final OrganisationAccessPolicy organisationAccessPolicy) {
         this.accessControlListManager = accessControlListManager;
         this.queryHandler = queryHandler;
         this.sourceContext = sourceContext;
         this.whoisObjectMapper = whoisObjectMapper;
         this.whoisObjectServerMapper = whoisObjectServerMapper;
+        this.organisationAccessPolicy = organisationAccessPolicy;
     }
 
     @GET
@@ -72,6 +76,7 @@ public class WhoisVersionService {
             @PathParam("key") final String key) {
 
         checkForMainSource(request, source);
+        checkOrganisationAccess(request, objectType);
 
         final QueryBuilder queryBuilder = new QueryBuilder()
                 .addCommaList(QueryFlag.SELECT_TYPES, ObjectType.getByName(objectType).getName())
@@ -121,6 +126,7 @@ public class WhoisVersionService {
             @PathParam("version") final Integer version) {
 
         checkForMainSource(request, source);
+        checkOrganisationAccess(request, objectType);
 
         final QueryBuilder queryBuilder = new QueryBuilder()
                 .addCommaList(QueryFlag.SELECT_TYPES, ObjectType.getByName(objectType).getName())
@@ -153,6 +159,12 @@ public class WhoisVersionService {
 
     private boolean isTrusted(final HttpServletRequest request) {
         return accessControlListManager.isTrusted(InetAddresses.forString(request.getRemoteAddr()));
+    }
+
+    private void checkOrganisationAccess(final HttpServletRequest request, final String objectType) {
+        if (!organisationAccessPolicy.mayRead(request, ObjectType.getByName(objectType))) {
+            throw new WebApplicationException(Response.status(Response.Status.NOT_FOUND).build());
+        }
     }
 
     private void checkForMainSource(final HttpServletRequest request, final String source) {

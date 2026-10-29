@@ -10,5 +10,9 @@ import java.util.Set;
 
 public interface AutocompleteSearch {
 
-    List<Map<String, Object>> search(final String queryString, final Set<AttributeType> queryAttributes, final Set<AttributeType> responseAttributes, final Set<ObjectType> objectTypes) throws IOException;
+    List<Map<String, Object>> search(final String queryString,
+                                     final Set<AttributeType> queryAttributes,
+                                     final Set<AttributeType> responseAttributes,
+                                     final Set<ObjectType> objectTypes,
+                                     final boolean includeOrganisation) throws IOException;
 }

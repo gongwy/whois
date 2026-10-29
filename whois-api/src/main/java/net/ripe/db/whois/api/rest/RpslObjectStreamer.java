@@ -16,6 +16,7 @@ import net.ripe.db.whois.api.rest.mapper.WhoisObjectServerMapper;
 import net.ripe.db.whois.api.rest.marshal.StreamingHelper;
 import net.ripe.db.whois.api.rest.marshal.StreamingMarshal;
 import net.ripe.db.whois.api.rest.marshal.StreamingMarshalTextPlain;
+import net.ripe.db.whois.api.security.OrganisationAccessPolicy;
 import net.ripe.db.whois.common.ApplicationVersion;
 import net.ripe.db.whois.common.IllegalArgumentExceptionMessage;
 import net.ripe.db.whois.common.Message;
@@ -48,15 +49,18 @@ public class RpslObjectStreamer {
 
     private final QueryHandler queryHandler;
     private final WhoisObjectServerMapper whoisObjectServerMapper;
+    private final OrganisationAccessPolicy organisationAccessPolicy;
     private final Version version;
 
     @Autowired
     public RpslObjectStreamer(
             final QueryHandler queryHandler,
             final WhoisObjectServerMapper whoisObjectServerMapper,
+            final OrganisationAccessPolicy organisationAccessPolicy,
             final ApplicationVersion applicationVersion) {
         this.queryHandler = queryHandler;
         this.whoisObjectServerMapper = whoisObjectServerMapper;
+        this.organisationAccessPolicy = organisationAccessPolicy;
         this.version = new Version(
             applicationVersion.getVersion(),
             applicationVersion.getTimestamp(),
@@ -153,6 +157,9 @@ public class RpslObjectStreamer {
             }
 
             private void streamRpslObject(final RpslObject rpslObject) {
+                if (!organisationAccessPolicy.mayRead(request, rpslObject)) {
+                    return;
+                }
                 if (!rpslObjectFound) {
                     rpslObjectFound = true;
                     startStreaming();
@@ -192,7 +199,9 @@ public class RpslObjectStreamer {
                 final WhoisObject whoisObject = whoisObjectServerMapper.map(rpslObject, parameters);
                 whoisObjectServerMapper.mapAbuseContact(whoisObject, parameters, rpslObject);
                 whoisObjectServerMapper.mapManagedAttributes(whoisObject, parameters, rpslObject);
-                whoisObjectServerMapper.mapResourceHolder(whoisObject, parameters, rpslObject);
+                if (organisationAccessPolicy.isAuthorised(request)) {
+                    whoisObjectServerMapper.mapResourceHolder(whoisObject, parameters, rpslObject);
+                }
                 whoisObjectServerMapper.mapObjectMessages(whoisObject, parameters, rpslObject);
 
                 if (streamingMarshal instanceof StreamingMarshalTextPlain) {

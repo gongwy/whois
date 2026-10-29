@@ -17,6 +17,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.index.query.MultiMatchQueryBuilder;
+import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.query.QueryStringQueryBuilder;
 import org.elasticsearch.rest.RestStatus;
@@ -170,12 +171,22 @@ public class ElasticFulltextSearch extends FulltextSearch {
 
     private SearchSourceBuilder getSourceBuilder(int start, HighlightBuilder highlightBuilder, SearchRequest searchRequest) {
         final SearchSourceBuilder sourceBuilder = new SearchSourceBuilder()
-                .query(getQueryBuilder(searchRequest.getQuery()))
+                .query(getQueryBuilder(searchRequest))
                 .size(searchRequest.getRows()).from(start)
                 .aggregation(AGGREGATION_BUILDER)
                 .sort(SORT_BUILDERS)
                 .highlighter(highlightBuilder).trackTotalHits(true);
         return sourceBuilder;
+    }
+
+    private QueryBuilder getQueryBuilder(final SearchRequest searchRequest) {
+        final QueryStringQueryBuilder queryBuilder = getQueryBuilder(searchRequest.getQuery());
+        if (searchRequest.isIncludeOrganisation()) {
+            return queryBuilder;
+        }
+        return QueryBuilders.boolQuery()
+                .must(queryBuilder)
+                .mustNot(QueryBuilders.termQuery("object-type.raw", ObjectType.ORGANISATION.getName()));
     }
 
     private HighlightBuilder getHighlightBuilder(SearchRequest searchRequest) {

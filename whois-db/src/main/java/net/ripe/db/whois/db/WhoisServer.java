@@ -32,6 +32,7 @@ import java.security.Security;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.StreamSupport;
 
@@ -86,10 +87,21 @@ public class WhoisServer {
                 .flatMap(Arrays::stream)
                 .distinct()
                 .sorted()
-                .forEach(prop -> LOGGER.info("{}: {}", prop, (prop.contains("credentials") || prop.contains("password")) ? "*****" :  applicationContext.getEnvironment().getProperty(prop)));
+                .forEach(prop -> LOGGER.info("{}: {}", prop,
+                        isSensitiveProperty(prop) ? "*****" : applicationContext.getEnvironment().getProperty(prop)));
 
         printJvmSecurityProperties();
         LOGGER.info("Whois server started in {}", stopwatch.stop());
+    }
+
+    private static boolean isSensitiveProperty(final String propertyName) {
+        final String lowerName = propertyName.toLowerCase(Locale.ROOT);
+        return lowerName.contains("credential")
+                || lowerName.contains("password")
+                || lowerName.contains("secret")
+                || lowerName.contains("token")
+                || lowerName.contains("api_key")
+                || lowerName.contains("apikey");
     }
 
     public void start() {

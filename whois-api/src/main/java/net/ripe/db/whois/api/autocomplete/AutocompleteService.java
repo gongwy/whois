@@ -1,18 +1,21 @@
 package net.ripe.db.whois.api.autocomplete;
 
 import com.google.common.base.Strings;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import net.ripe.db.whois.api.security.OrganisationAccessPolicy;
 import net.ripe.db.whois.common.rpsl.AttributeType;
 import net.ripe.db.whois.common.rpsl.ObjectTemplate;
 import net.ripe.db.whois.common.rpsl.ObjectType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.QueryParam;
-import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
@@ -30,10 +33,13 @@ public class AutocompleteService {
     private static final int MINIMUM_PREFIX_LENGTH = 2;
 
     private final AutocompleteSearch autocompleteSearch;
+    private final OrganisationAccessPolicy organisationAccessPolicy;
 
     @Autowired
-    public AutocompleteService(final AutocompleteSearch autocompleteSearch) {
+    public AutocompleteService(final AutocompleteSearch autocompleteSearch,
+                               final OrganisationAccessPolicy organisationAccessPolicy) {
         this.autocompleteSearch = autocompleteSearch;
+        this.organisationAccessPolicy = organisationAccessPolicy;
     }
 
     /**
@@ -57,6 +63,7 @@ public class AutocompleteService {
     @GET
     @Produces({MediaType.APPLICATION_XML, MediaType.APPLICATION_JSON})
     public Response lookup(
+            @Context final HttpServletRequest request,
             // query by field name
             @QueryParam("query") final String query,
             @QueryParam("field") final String field,
@@ -78,12 +85,22 @@ public class AutocompleteService {
                 if (AttributeType.getByNameOrNull(field) == null) {
                     return badRequest("invalid name for field");
                 }
-                return okResponse(autocompleteSearch.search(query, getLookupAttributes(field), getAttributeTypes(attributes), Collections.emptySet()));
+                return okResponse(autocompleteSearch.search(
+                        query,
+                        getLookupAttributes(field),
+                        getAttributeTypes(attributes),
+                        Collections.emptySet(),
+                        organisationAccessPolicy.isAuthorised(request)));
             } else if (!select.isEmpty() && !where.isEmpty() && !Strings.isNullOrEmpty(like)) {
 
                 // query by attribute(s)
 
-                return okResponse(autocompleteSearch.search(like, getAttributeTypes(where), getAttributeTypes(select), getObjectTypes(from)));
+                return okResponse(autocompleteSearch.search(
+                        like,
+                        getAttributeTypes(where),
+                        getAttributeTypes(select),
+                        getObjectTypes(from),
+                        organisationAccessPolicy.isAuthorised(request)));
             } else {
                 return badRequest("invalid arguments");
             }

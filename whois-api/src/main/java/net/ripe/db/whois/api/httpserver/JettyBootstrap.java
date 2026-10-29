@@ -98,6 +98,7 @@ public class JettyBootstrap implements ApplicationService {
     private Server server;
     private int securePort;
     private int port;
+    private final String bindHost;
     private final int idleTimeout;
 
     private int clientAuthPort;
@@ -128,6 +129,7 @@ public class JettyBootstrap implements ApplicationService {
                           @Value("${http.sni.host.check:true}") final boolean sniHostCheck,
                           @Value("${rewrite.engine.enabled:false}") final boolean rewriteEngineEnabled,
                           @Value("${port.api:0}") final int port,
+                          @Value("${port.api.host:}") final String bindHost,
                           @Value("${port.api.secure:-1}") final int securePort,
                           @Value("${port.client.auth:-1}") final int clientAuthPort,
                           @Value("${http.x_forwarded_for:true}") final boolean xForwardedForHttp,
@@ -147,6 +149,7 @@ public class JettyBootstrap implements ApplicationService {
         this.idleTimeout = idleTimeout;
         this.securePort = securePort;
         this.port = port;
+        this.bindHost = bindHost;
         this.server = null;
         this.clientAuthPort = clientAuthPort;
         this.xForwardedForHttp = xForwardedForHttp;
@@ -260,6 +263,9 @@ public class JettyBootstrap implements ApplicationService {
         httpConfiguration.setUriCompliance(UriCompliance.LEGACY);
         final ServerConnector connector = new ServerConnector(server, new HttpConnectionFactory(httpConfiguration), new HTTP2CServerConnectionFactory(httpConfiguration));
         connector.setPort(this.port);
+        if (!bindHost.isBlank()) {
+            connector.setHost(bindHost);
+        }
         return connector;
     }
 

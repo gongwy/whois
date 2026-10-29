@@ -11,6 +11,7 @@ import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import net.ripe.db.whois.api.rest.RestServiceHelper;
+import net.ripe.db.whois.api.security.OrganisationAccessPolicy;
 import net.ripe.db.whois.common.rpsl.AttributeType;
 import net.ripe.db.whois.common.sso.AuthServiceClient;
 import net.ripe.db.whois.query.domain.QueryException;
@@ -31,10 +32,13 @@ public class FullTextSearchService {
     private static final Logger LOGGER = LoggerFactory.getLogger(FullTextSearchService.class);
 
     private final FulltextSearch fulltextSearch;
+    private final OrganisationAccessPolicy organisationAccessPolicy;
 
     @Autowired
-    public FullTextSearchService(final FulltextSearch fulltextSearch) {
+    public FullTextSearchService(final FulltextSearch fulltextSearch,
+                                 final OrganisationAccessPolicy organisationAccessPolicy) {
         this.fulltextSearch = fulltextSearch;
+        this.organisationAccessPolicy = organisationAccessPolicy;
     }
 
     @GET
@@ -62,6 +66,7 @@ public class FullTextSearchService {
                             .setHighlightPost(highlightPost)
                             .setFormat(writerType)
                             .setFacet(facet)
+                            .setIncludeOrganisation(organisationAccessPolicy.isAuthorised(request))
                             .build(), crowdTokenKey, request));
         } catch (IllegalArgumentException e) {
             return badRequest(e.getMessage());

@@ -16,6 +16,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import net.ripe.db.whois.api.rdap.domain.RdapRequestType;
 import net.ripe.db.whois.api.rest.RestServiceHelper;
+import net.ripe.db.whois.api.security.OrganisationAccessPolicy;
 import net.ripe.db.whois.common.dao.RpslObjectInfo;
 import net.ripe.db.whois.common.dao.RpslObjectUpdateDao;
 import net.ripe.db.whois.common.domain.CIString;
@@ -73,6 +74,7 @@ public class RdapService {
     private final RdapRequestValidator rdapRequestValidator;
     private final RpslObjectUpdateDao rpslObjectUpdateDao;
     private final SourceContext sourceContext;
+    private final OrganisationAccessPolicy organisationAccessPolicy;
 
     /**
      *
@@ -96,6 +98,7 @@ public class RdapService {
                        final RdapFullTextSearch rdapFullTextSearch,
                        final SourceContext sourceContext,
                        final RpslObjectUpdateDao rpslObjectUpdateDao,
+                       final OrganisationAccessPolicy organisationAccessPolicy,
                        @Value("${rdap.public.baseUrl:}") final String baseUrl,
                        final RdapRequestValidator rdapRequestValidator,
                        @Value("${rdap.search.max.results:100}") final int maxResultSize,
@@ -112,6 +115,7 @@ public class RdapService {
         this.maxResultSize = maxResultSize;
         this.maxEntityResultSize = maxEntityResultSize;
         this.rpslObjectUpdateDao = rpslObjectUpdateDao;
+        this.organisationAccessPolicy = organisationAccessPolicy;
     }
 
     @GET
@@ -144,6 +148,9 @@ public class RdapService {
             }
             case ENTITY -> {
                 rdapRequestValidator.validateEntity(key);
+                if (key.toUpperCase().startsWith("ORG-") && !organisationAccessPolicy.isAuthorised(request)) {
+                    throw new RdapException("404 Not Found", "Requested object not found", HttpStatus.NOT_FOUND_404);
+                }
                 return key.toUpperCase().startsWith("ORG-") ? lookupForOrganisation(request, key) :
                         lookupObject(request, whoisObjectTypes, key);
             }
@@ -494,7 +501,9 @@ public class RdapService {
         }
 
         try {
-            final List<RpslObject> objects = rdapFullTextSearch.performSearch(fields, term, request.getRemoteAddr(), source);
+            final List<RpslObject> objects = rdapFullTextSearch.performSearch(fields, term, request.getRemoteAddr(), source).stream()
+                    .filter(object -> organisationAccessPolicy.mayRead(request, object))
+                    .toList();
 
             if (objects.isEmpty()) {
                 throw new RdapException("404 Not Found", "Requested object not found: " + term, HttpStatus.NOT_FOUND_404);

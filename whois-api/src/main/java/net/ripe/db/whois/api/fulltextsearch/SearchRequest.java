@@ -19,6 +19,7 @@ public final class SearchRequest {
     private final String highlightPost;
     private final boolean facet;
     private final String format;
+    private final boolean includeOrganisation;
 
     private SearchRequest(
                 final int rows,
@@ -28,7 +29,8 @@ public final class SearchRequest {
                 final String highlightPre,
                 final String highlightPost,
                 final boolean facet,
-                final String format) {
+                final String format,
+                final boolean includeOrganisation) {
         Validate.notNull(query, "No query parameter.");
         Validate.isTrue(!query.isEmpty(), "Invalid query");
         Validate.isTrue(XML_FORMAT.equals(format) || JSON_FORMAT.equals(format), "invalid format " + format);
@@ -42,6 +44,7 @@ public final class SearchRequest {
         this.highlightPost = highlightPost;
         this.facet = facet;
         this.format = format;
+        this.includeOrganisation = includeOrganisation;
     }
 
     public String getQuery() {
@@ -76,6 +79,10 @@ public final class SearchRequest {
         return this.format;
     }
 
+    public boolean isIncludeOrganisation() {
+        return includeOrganisation;
+    }
+
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(SearchRequest.class)
@@ -100,6 +107,12 @@ public final class SearchRequest {
         private String highlightPost;
         private String format;
         private boolean facet;
+        private boolean includeOrganisation = true;
+
+        public SearchRequestBuilder setIncludeOrganisation(final boolean includeOrganisation) {
+            this.includeOrganisation = includeOrganisation;
+            return this;
+        }
 
         public SearchRequestBuilder setRows(final String rows) {
             this.rows = getIntValue(rows);
@@ -150,7 +163,8 @@ public final class SearchRequest {
                             highlightPre,
                             highlightPost,
                             facet,
-                            format);
+                            format,
+                            includeOrganisation);
         }
 
         // helper methods
