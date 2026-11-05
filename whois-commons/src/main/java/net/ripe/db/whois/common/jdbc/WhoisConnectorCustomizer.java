@@ -40,7 +40,8 @@ public class WhoisConnectorCustomizer implements ConnectionCustomizer {
 
     private void setNames(final Connection connection, final String charset) {
         try (final Statement statement = connection.createStatement()) {
-            statement.executeQuery(String.format("SET NAMES '%s' COLLATE DEFAULT", charset));
+            // SET NAMES selects the charset's default collation on both MySQL and MariaDB.
+            statement.execute(String.format("SET NAMES '%s'", charset));
         } catch (SQLException e) {
             LOGGER.error("Caught {}: {} (ignored)", e.getClass().getName(), e.getMessage());
         }
