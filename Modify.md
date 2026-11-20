@@ -21,12 +21,12 @@
 默认 RIPE 逻辑中，自动生成 NIC-HDL 时后缀来自当前 `whois.source`。本项目新增配置项：
 
 ```properties
-user.handle.suffix.config=CERNIC:CER,AP:CER,CN:CER
+user.handle.suffix.config=CERNET:CER,AP:CER,CN:CER
 ```
 
 含义：
 
-- 当当前 `whois.source` 为 `CERNIC`、`AP` 或 `CN` 时，自动生成的 NIC-HDL 后缀使用 `CER`。
+- 当当前 `whois.source` 为 `CERNET`、`AP` 或 `CN` 时，自动生成的 NIC-HDL 后缀使用 `CER`。
 - 其他未配置的 source 仍使用原有默认规则，即使用当前 source 作为后缀。
 - 配置值中的后缀可以写成 `CER`，也兼容写成 `-CER`，代码会去掉开头的 `-`。
 - 配置项为空时不改变原有行为。
@@ -34,8 +34,8 @@ user.handle.suffix.config=CERNIC:CER,AP:CER,CN:CER
 示例：
 
 ```properties
-whois.source=CERNIC
-user.handle.suffix.config=CERNIC:CER,AP:CER,CN:CER
+whois.source=CERNET
+user.handle.suffix.config=CERNET:CER,AP:CER,CN:CER
 ```
 
 此时提交：
@@ -43,7 +43,7 @@ user.handle.suffix.config=CERNIC:CER,AP:CER,CN:CER
 ```text
 person:     TEST USER
 nic-hdl:    AUTO-1
-source:     CERNIC
+source:     CERNET
 ```
 
 生成结果会使用类似：
@@ -56,10 +56,10 @@ nic-hdl:    TU1-CER
 
 ```text
 nic-hdl:    XX1-CER
-source:     CERNIC
+source:     CERNET
 ```
 
-在 `whois.source=CERNIC` 且配置了 `CERNIC:CER` 时会被认为合法。
+在 `whois.source=CERNET` 且配置了 `CERNET:CER` 时会被认为合法。
 
 相关代码：
 
@@ -242,11 +242,11 @@ python3 tools/build_complete_whois_migration.py \
   --output-dir /absolute/path/to/new-empty-output
 ```
 
-最终可导入文件为 `import/CERNIC-import.db`。只有
+最终可导入文件为 `import/CERNET-import.db`。只有
 `complete-migration-report.md` 与 `import/validation-report.md` 都显示 `passed`
 时才允许进入 `Bootstrap.loadDump`。
 
-旧系统数据转换脚本为 `tools/convert_rsdb_cernic.py`。脚本不会修改原始数据；输出目录默认为脚本旁的 `rsdb-cernic-import-test/`，其中包含导入文件和转换摘要。输出文件含业务数据，不应提交到 Git 或上传到公共位置。
+旧系统数据转换脚本为 `tools/convert_rsdb_cernic.py`。脚本不会修改原始数据；输出目录默认为脚本旁的 `rsdb-cernet-import-test/`，其中包含导入文件和转换摘要。输出文件含业务数据，不应提交到 Git 或上传到公共位置。
 
 ### 转换旧数据
 
@@ -254,7 +254,7 @@ python3 tools/build_complete_whois_migration.py \
 
 ```bash
 python3 tools/prepare_rsdb_import.py /absolute/path/to/new-rsdb \
-  --output-dir /absolute/path/to/cernic-import-output \
+  --output-dir /absolute/path/to/cernet-import-output \
   --mode safe \
   --review-workbook /absolute/path/to/org_duplicates.xlsx
 ```
@@ -263,7 +263,7 @@ python3 tools/prepare_rsdb_import.py /absolute/path/to/new-rsdb \
 
 ```bash
 python3 tools/prepare_rsdb_import.py /absolute/path/to/new-rsdb \
-  --output-dir /absolute/path/to/cernic-import-complete \
+  --output-dir /absolute/path/to/cernet-import-complete \
   --mode complete \
   --review-workbook /absolute/path/to/org_duplicates.xlsx \
   --review-overrides /absolute/path/to/org_duplicates_overrides.csv
@@ -321,7 +321,7 @@ python3 tools/convert_rsdb_cernic.py \
   --review-workbook /absolute/path/to/org_duplicates.xlsx \
   --review-overrides /absolute/path/to/org_duplicates_overrides.csv \
   --city-code-map /absolute/path/to/city-codes.json \
-  --output-dir /absolute/path/to/cernic-import-output \
+  --output-dir /absolute/path/to/cernet-import-output \
   --bootstrap-dump /absolute/path/to/myTEST.db
 ```
 
@@ -333,20 +333,20 @@ python3 tools/convert_rsdb_cernic.py \
   --review-workbook /absolute/path/to/org_duplicates.xlsx \
   --city-code-map /absolute/path/to/city-codes.json \
   --skip-reviewed-organisations \
-  --output-dir /absolute/path/to/cernic-import-safe
+  --output-dir /absolute/path/to/cernet-import-safe
 ```
 
 生成：
 
 ```text
-/absolute/path/to/cernic-import-output/CERNIC-import-test.db
-/absolute/path/to/cernic-import-output/conversion-summary.md
-/absolute/path/to/cernic-import-output/organisation-city-codes.tsv
+/absolute/path/to/cernet-import-output/CERNET-import-test.db
+/absolute/path/to/cernet-import-output/conversion-summary.md
+/absolute/path/to/cernet-import-output/organisation-city-codes.tsv
 ```
 
 转换规则：
 
-- 所有对象的 `source` 统一为 `CERNIC`。
+- 所有对象的 `source` 统一为 `CERNET`。
 - 旧 `person`、`role` 的 NIC-HDL 及全部 `admin-c`、`tech-c`、`zone-c` 引用统一改为 `-CER`；发生同名冲突时为后续对象分配可用数字。
 - `conn-i` 转为 `organisation` 主键；同一 `conn-i` 只保留一个 organisation。已核对的重复 ID 使用工作簿最终选择的 `org-name` 与 `c-org-name`。
 - organisation 汇总关联的 inetnum、inet6num、domain 信息：保留可用的中英文名称、历史名称、地区字段和 notify；统一入口不写 `tech-c`，仅把非“预留”IP 备案中能够唯一确定的紧急联系人写入 `admin-c`。直接调用旧转换器且未提供预处理报告时，仍沿用不写 organisation 联系人的兼容行为。每个 organisation 必须写入 `c-cityid`：优先以旧 `c-city` 匹配网站行政区划表中的城市或区县编码，无法精确匹配时退回 `c-province` 的省级编码，仍无法匹配时写入 `000000`；逐条结果写入私有的 `organisation-city-codes.tsv`。
@@ -354,7 +354,7 @@ python3 tools/convert_rsdb_cernic.py \
 - 旧数据中为零的联系人或 organisation 索引改为有效正数，所有引用同步更新。
 - 无法解析的旧联系人引用生成占位 `role`，避免对象引用断裂。
 - IPv4 CIDR 和区间仅用于匹配及逻辑重复检测，最终主键保留所选旧记录的原始文本；逻辑重复记录按较新的 `changed` 值保留，并逐条写入 `deduplicated-ipv4-resources.tsv`。
-- 导入维护者为 `CERNIC-DBM-MNT`；脚本写入其 MD5-PW 密码哈希，实际密码仅在本地私有环境保存。
+- 导入维护者为 `CERNET-DBM-MNT`；脚本写入其 MD5-PW 密码哈希，实际密码仅在本地私有环境保存。
 - 转换前会校验核对工作簿；失败时只生成 `review-validation-errors.md`，不会生成可导入 dump。
 
 ### 本机启动并通过 JMX 导入
@@ -364,8 +364,8 @@ python3 tools/convert_rsdb_cernic.py \
 部署配置至少应包含：
 
 ```properties
-whois.source=CERNIC
-user.handle.suffix.config=CERNIC:CER
+whois.source=CERNET
+user.handle.suffix.config=CERNET:CER
 ```
 
 启动 whois，并开启仅本地可访问的 JMX：
@@ -417,9 +417,9 @@ cd /absolute/path/to/whois/run-local
 cd /absolute/path/to/whois_website
 mvn package -DskipTests
 WHOIS_URL_PREFIX=http://127.0.0.1:1081 \
-WHOIS_SOURCE=CERNIC \
-WHOIS_MNTNER=CERNIC-DBM-MNT \
-WHOIS_PASSWORD=<CERNIC-DBM-MNT密码> \
+WHOIS_SOURCE=CERNET \
+WHOIS_MNTNER=CERNET-DBM-MNT \
+WHOIS_PASSWORD=<CERNET-DBM-MNT密码> \
 /usr/bin/java -jar target/whois-website-1.0.0.jar --spring.profiles.active=local
 ```
 
@@ -438,13 +438,13 @@ java --add-exports jdk.jconsole/sun.tools.jconsole=ALL-UNNAMED \
 ```text
 open 127.0.0.1:1099
 bean net.ripe.db.whois:name=Bootstrap
-run loadDump cernic-import /absolute/path/to/CERNIC-import-test.db
+run loadDump cernet-import /absolute/path/to/CERNET-import-test.db
 ```
 
 也可不进入交互界面，直接执行导入：
 
 ```bash
-printf 'open 127.0.0.1:1100\nbean net.ripe.db.whois:name=Bootstrap\nrun loadDump cernic-import /absolute/path/to/CERNIC-import-test.db\nquit\n' \
+printf 'open 127.0.0.1:1100\nbean net.ripe.db.whois:name=Bootstrap\nrun loadDump cernet-import /absolute/path/to/CERNET-import-test.db\nquit\n' \
   | java --add-exports jdk.jconsole/sun.tools.jconsole=ALL-UNNAMED \
       -jar /absolute/path/to/jmxterm-1.0.4-uber.jar -n
 ```
@@ -463,7 +463,7 @@ FINISHED
 
 ```bash
 { printf 'AA2-CER\r\n'; sleep 1; } | nc -w 8 127.0.0.1 <port.query>
-curl http://127.0.0.1:1080/whois/CERNIC/person/AA2-CER
+curl http://127.0.0.1:1080/whois/CERNET/person/AA2-CER
 ```
 
 ## SyncUpdates 示例

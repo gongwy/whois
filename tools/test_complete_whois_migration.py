@@ -88,10 +88,12 @@ class CompleteWhoisMigrationTests(unittest.TestCase):
                 ip_workbook=ip_workbook,
                 filing_exclusions=exclusions,
             )
-            dump = output / "CERNIC-import-test.db"
+            dump = output / "CERNET-import-test.db"
             result = validate_dump(dump)
             self.assertEqual(result["status"], "passed")
             objects = list(parse_dump(dump))
+            self.assertTrue(all(values == ["CERNET"] for obj in objects for values in [obj.get("source", [])]))
+            self.assertTrue(any(converter.one(obj, "mntner") == "CERNET-DBM-MNT" for obj in objects))
             organisation = next(obj for obj in objects if converter.one(obj, "organisation") == "BJ000001")
             self.assertEqual(converter.one(organisation, "c-org-name"), "甲大学")
             self.assertEqual(converter.one(organisation, "org-name"), "University A")

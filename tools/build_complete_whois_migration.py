@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build review reports and a complete importable CERNIC WHOIS dump in one run."""
+"""Build review reports and a complete importable CERNET WHOIS dump in one run."""
 
 from __future__ import annotations
 
@@ -230,8 +230,8 @@ def main() -> None:
                 filing_exclusions=args.filing_exclusions,
             )
 
-        generated = import_dir / "CERNIC-import-test.db"
-        dump = import_dir / "CERNIC-import.db"
+        generated = import_dir / "CERNET-import-test.db"
+        dump = import_dir / "CERNET-import.db"
         generated.rename(dump)
         structural = validate_dump(dump)
         write_validation_report(import_dir, structural, "complete-integrated", args.rsdb_dir)

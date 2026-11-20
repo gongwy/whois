@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert legacy CERNIC RPSL files into an importable CERNIC test dump."""
+"""Convert legacy CERNIC RPSL files into an importable CERNET test dump."""
 
 from collections import Counter, defaultdict
 import argparse
@@ -21,11 +21,11 @@ from migration_special_rules import (
 
 ROOT = Path(__file__).parent
 SOURCE = ROOT / "rsdb"
-OUT = ROOT / "rsdb-cernic-import-test"
+OUT = ROOT / "rsdb-cernet-import-test"
 WHOIS = ROOT.parent / "myTEST.db"
 REVIEW = ROOT / "org_duplicates.xlsx"
-WHOIS_SOURCE = "CERNIC"
-MNTNER = "CERNIC-DBM-MNT"
+WHOIS_SOURCE = "CERNET"
+MNTNER = "CERNET-DBM-MNT"
 
 
 class ReviewValidationError(ValueError):
@@ -984,7 +984,7 @@ def main(
         lines += [f"source: {WHOIS_SOURCE}", ""]
         dump.extend(lines)
 
-    (out / "CERNIC-import-test.db").write_text("\n".join(dump), encoding="utf-8")
+    (out / "CERNET-import-test.db").write_text("\n".join(dump), encoding="utf-8")
     with (out / "skipped-domains.tsv").open("w", encoding="utf-8", newline="") as file:
         writer = csv.writer(file, delimiter="\t")
         writer.writerow(["reason", "domain", "netname", "orgname", "c-orgname", "province", "c-province", "city", "c-city"])

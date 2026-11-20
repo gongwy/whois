@@ -23,7 +23,7 @@ const { FileBlob, SpreadsheetFile, Workbook } = await loadArtifactTool();
 
 const [inputPath, outputPath] = process.argv.slice(2);
 if (!inputPath || !outputPath) {
-  throw new Error("Usage: export_organisation_review.mjs <CERNIC-import.db> <output.xlsx>");
+  throw new Error("Usage: export_organisation_review.mjs <CERNET-import.db> <output.xlsx>");
 }
 
 const COLORS = {

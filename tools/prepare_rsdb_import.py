@@ -116,7 +116,7 @@ def validate_dump(path: Path) -> dict:
     if duplicate_keys:
         errors.append(f"duplicate primary keys: {len(duplicate_keys)}")
     if invalid_sources:
-        errors.append(f"objects with a non-CERNIC source: {len(invalid_sources)}")
+        errors.append(f"objects with a non-CERNET source: {len(invalid_sources)}")
     if missing_contacts:
         errors.append(f"dangling contact references: {len(missing_contacts)}")
     if missing_organisations:
@@ -208,7 +208,7 @@ def main() -> None:
             args.review_overrides.resolve() if args.review_overrides else None,
             city_codes, args.mode == "safe")
 
-    dump = output / "CERNIC-import-test.db"
+    dump = output / "CERNET-import-test.db"
     result = validate_dump(dump)
     write_validation_report(output, result, args.mode, source)
     if result["errors"]:
