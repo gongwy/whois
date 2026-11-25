@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
+import java.sql.Connection;
 
 @Repository
 class JdbcUpdateLockDao implements UpdateLockDao {
@@ -22,8 +23,9 @@ class JdbcUpdateLockDao implements UpdateLockDao {
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void setUpdateLock() {
-        final String isolationLevel = jdbcTemplate.queryForObject("select @@tx_isolation", String.class);
-        if (!isolationLevel.equals("READ-COMMITTED")) {
+        // Read the active transaction setting through JDBC so this works across MySQL/MariaDB versions.
+        final Integer isolationLevel = jdbcTemplate.execute(Connection::getTransactionIsolation);
+        if (!Integer.valueOf(Connection.TRANSACTION_READ_COMMITTED).equals(isolationLevel)) {
             throw new IllegalStateException("Invalid isolation level: " + isolationLevel);
         }
 

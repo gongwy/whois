@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
+import java.sql.Connection;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -22,6 +23,6 @@ public class TransactionTestIntegration extends AbstractUpdateDaoIntegrationTest
     @Test
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public void isolation_level_is_read_committed_so_that_global_locks_work_as_expected() throws Exception {
-        assertThat(new JdbcTemplate(dataSource).queryForObject("select @@tx_isolation", String.class), is("READ-COMMITTED"));
+        assertThat(new JdbcTemplate(dataSource).execute(Connection::getTransactionIsolation), is(Connection.TRANSACTION_READ_COMMITTED));
     }
 }
