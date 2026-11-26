@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static net.ripe.db.whois.common.domain.CIString.ciString;
+import static net.ripe.db.whois.common.rpsl.AttributeSyntax.ANY_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.AGGR_BNDRY_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.AGGR_MTD_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.ALIAS_SYNTAX;
@@ -77,7 +78,6 @@ import static net.ripe.db.whois.common.rpsl.AttributeSyntax.PEERING_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.PEER_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.PERSON_ROLE_NAME_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.PHONE_SYNTAX;
-import static net.ripe.db.whois.common.rpsl.AttributeSyntax.MOBILE_PHONE_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.PINGABLE_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.POEM_SYNTAX;
 import static net.ripe.db.whois.common.rpsl.AttributeSyntax.POETIC_FORM_SYNTAX;
@@ -632,8 +632,8 @@ public enum AttributeType implements Documented {
             .syntax(PERSON_ROLE_NAME_SYNTAX)),
 
     PHONE(new Builder("phone", "ph")
-            .doc("Specifies a telephone number of the contact.")
-            .syntax(MOBILE_PHONE_SYNTAX)),
+            .doc("Specifies free-form contact information, such as telephone numbers, extensions, and contact hours.")
+            .syntax(ANY_SYNTAX)),
 
     PING_HDL(new Builder("ping-hdl", "pc")
             .doc("References a person or role capable of responding to queries concerning the IP address(es) " +
