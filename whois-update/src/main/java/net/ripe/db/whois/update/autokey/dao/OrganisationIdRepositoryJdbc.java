@@ -10,7 +10,6 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.dao.EmptyResultDataAccessException;
 
 import javax.sql.DataSource;
 import java.sql.ResultSet;
@@ -46,7 +45,6 @@ class OrganisationIdRepositoryJdbc implements OrganisationIdRepository {
 
         if (organisationIdRange == null) {
             createRange(autoKey.getSpace(), autoKey.getSuffix(), autoKey.getIndex());
-            updateRange(1, autoKey.getIndex());
             return true;
         }
 
@@ -63,16 +61,10 @@ class OrganisationIdRepositoryJdbc implements OrganisationIdRepository {
         // space: "CERNET ORG" -> "CO", suffix: "TEST"
         final OrganisationIdRange organisationIdRange = getOrganisationIdRange(space, suffix);
 
-        int availableIndex;
+        final int availableIndex;
         if (organisationIdRange == null) {
             availableIndex = 1;
-            try{
-                availableIndex = jdbcTemplate.queryForObject("SELECT max(range_end) FROM organisation_id", Integer.class) + 1;
-            }catch (Exception e) {
-                LOGGER.info("enter claimNextAvailableIndex  table is null");
-            }
             createRange(space, suffix, availableIndex);
-            updateRange(1, availableIndex);
         } else {
             availableIndex = organisationIdRange.rangeEnd + 1;
             updateRange(organisationIdRange.rangeId, availableIndex);
@@ -105,8 +97,8 @@ class OrganisationIdRepositoryJdbc implements OrganisationIdRepository {
     void updateRange(final int rangeId, final int end) {
         LOGGER.info("enter updateRange end is " + end);
         jdbcTemplate.update(
-                "update organisation_id set range_end = ?",
-                end);
+                "update organisation_id set range_end = ? where range_id = ?",
+                end, rangeId);
     }
 
     private String getSuffixForSql(final String suffix) {
